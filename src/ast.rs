@@ -165,9 +165,8 @@ impl Schema {
                             ));
                         }
                     }
-
-                    // TODO: Check all variants have unique values?
                 }
+
                 Declaration::Struct { ident, fields } => {
                     if !type_names.insert(ident.as_str()) {
                         return Err(GenoError::DuplicateType(ident.clone()));
