@@ -102,6 +102,40 @@ fn generate_dart_mp() {
 }
 
 #[test]
+fn generate_dart_json() {
+    let output = cmd![
+        "cargo",
+        "run",
+        "--bin",
+        "geno",
+        "--",
+        "examples/example.geno",
+        "-f",
+        "dart-json"
+    ]
+    .env("GENO_DEBUG", "1")
+    .stdout_capture()
+    .stderr_capture()
+    .unchecked()
+    .run()
+    .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("enum "));
+    assert!(stdout.contains("class "));
+    assert!(stdout.contains("fromJson"));
+    assert!(stdout.contains("toJson"));
+    assert!(stdout.contains("@JsonSerializable()"));
+    assert!(stdout.contains("@JsonEnum(valueField: 'value')"));
+    assert!(stdout.contains("import 'package:json_annotation/json_annotation.dart'"));
+}
+
+#[test]
 fn generate_to_output_file() {
     let dir = TempDir::new().unwrap();
     let out_path = dir.path().join("output.rs");

@@ -37,3 +37,7 @@ path = "src/bin/geno_rust_serde.rs"
 [[bin]]
 name = "geno-dart-mp"
 path = "src/bin/geno_dart_mp.rs"
+
+[[bin]]
+name = "geno-dart-json"
+path = "src/bin/geno_dart_json.rs"
