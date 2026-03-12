@@ -14,7 +14,8 @@ use std::{
     name = "geno",
     version,
     about = "Geno schema compiler",
-    long_about = "Geno is a schema compiler for generating source code from a schema definition."
+    long_about = "Geno is a schema compiler for generating source code from a schema definition.",
+    trailing_var_arg = true
 )]
 struct Cli {
     /// Input .geno file
@@ -33,6 +34,9 @@ struct Cli {
     /// Output source code format (e.g. -f dart-json or -f rust-rmp)
     #[arg(value_name = "FORMAT", short = 'f', long)]
     format: Option<String>,
+
+    #[arg(allow_hyphen_values = true)]
+    extra_args: Vec<String>,
 }
 
 fn main() {
@@ -78,10 +82,20 @@ fn run() -> anyhow::Result<i32> {
         None => bail!("No output format specified"),
     };
 
+    let extra_args: Vec<&str> = cli.extra_args.iter().map(|s| s.as_str()).collect();
     let cmd_expr = if std::env::var("GENO_DEBUG").is_ok() {
-        cmd!["cargo", "run", "--bin", &format!("geno-{}", format), "--"]
+        cmd(
+            "cargo",
+            itertools::concat(vec![
+                vec!["run", "--bin", &format!("geno-{}", format), "--"],
+                extra_args,
+            ]),
+        )
     } else {
-        cmd![&format!("geno-{}", format)]
+        cmd(
+            format!("geno-{}", format),
+            itertools::concat(vec![vec!["--"], extra_args]),
+        )
     };
     let ast_bytes = rmp_serde::to_vec(&ast).context("Failed to serialize AST to MessagePack")?;
     let output = cmd_expr

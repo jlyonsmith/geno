@@ -56,13 +56,17 @@ fn run() -> anyhow::Result<()> {
 fn generate(schema: &ast::Schema, part_name: Option<&str>) -> String {
     let mut out = String::new();
 
-    writeln!(out, "import 'package:json_annotation/json_annotation.dart';").unwrap();
+    writeln!(
+        out,
+        "import 'package:json_annotation/json_annotation.dart';"
+    )
+    .unwrap();
     writeln!(out).unwrap();
     match part_name {
-        Some(name) => writeln!(out, "part '{name}';").unwrap(),
+        Some(name) => writeln!(out, "part '{name}.g.dart';").unwrap(),
         None => writeln!(
             out,
-            "// part 'generated.g.dart'; // Replace with your output file name"
+            "// part 'generated.g.dart'; // Replace with your output file name or use -p argument"
         )
         .unwrap(),
     }
