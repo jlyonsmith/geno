@@ -24,7 +24,7 @@ pub enum IntegerType {
 }
 
 /// Enum representing integer values
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum IntegerValue {
     /// Signed 8-bit integer value
     I8(i8),

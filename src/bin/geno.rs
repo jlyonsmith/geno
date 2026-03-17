@@ -63,7 +63,8 @@ fn run() -> anyhow::Result<i32> {
 
     // Parse the input string into an AST
     let ast_builder = GenoAstBuilder::new(cli.input_path);
-    let ast = ast_builder.build()?;
+    let reader = |path: &_| std::fs::read_to_string(path);
+    let ast = ast_builder.build(&reader)?;
 
     // If the user specified an AST output path, write the AST to that file and exit
     if let Some(ast_path) = cli.ast_path {

@@ -1,6 +1,9 @@
 // Geno PEG grammar
 _schema     = _{ SOI ~ meta_decl ~ declaration* ~ EOI }
-declaration = _{ enum_decl | struct_decl }
+declaration = _{ enum_decl | struct_decl | include_stmt }
+
+// Include statements
+include_stmt = { "include" ~ string_literal }
 
 // Meta declarations
 meta_decl       = { "meta" ~ "{" ~ meta_data_list+ ~ "}" }

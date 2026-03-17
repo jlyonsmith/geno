@@ -10,7 +10,10 @@ mod error;
 pub use error::*;
 use pest::{Parser as PestParser, iterators::Pair};
 use pest_derive::Parser;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 // Put the Pest parser in a private module to suppress doc warnings
 // See [Issue #326](https://github.com/pest-parser/pest/issues/326)
@@ -22,9 +25,16 @@ mod parser {
     pub struct GenoParser;
 }
 
+use crate::ast::IntegerType;
 use parser::{GenoParser, Rule};
 
-use crate::ast::IntegerType;
+fn remove_first_and_last(value: &str) -> &str {
+    let mut chars = value.chars();
+
+    chars.next(); // Consume the first character
+    chars.next_back(); // Consume the last character
+    chars.as_str() // Return the remaining slice
+}
 
 /// A Geno AST builder
 pub struct GenoAstBuilder {
@@ -39,8 +49,11 @@ impl GenoAstBuilder {
     }
 
     /// Build and validate the AST
-    pub fn build(&self) -> Result<ast::Schema, GenoError> {
-        let input = std::fs::read_to_string(&self.file_path)?;
+    pub fn build(
+        &self,
+        read_to_string: &impl Fn(&Path) -> std::io::Result<String>,
+    ) -> Result<ast::Schema, GenoError> {
+        let input = read_to_string(&self.file_path)?;
         let mut schema_pairs = match GenoParser::parse(Rule::_schema, &input) {
             Ok(pairs) => pairs,
             Err(err) => {
@@ -60,15 +73,24 @@ impl GenoAstBuilder {
             }
 
             let rule = pair.as_rule();
-            let declaration = match rule {
-                Rule::enum_decl => self.build_enum_decl(pair),
-                Rule::struct_decl => self.build_struct_decl(pair),
+            match rule {
+                Rule::enum_decl => declarations.push(self.build_enum_decl(pair)?),
+                Rule::struct_decl => declarations.push(self.build_struct_decl(pair)?),
+                Rule::include_stmt => {
+                    let string = remove_first_and_last(&pair.into_inner().next().unwrap().as_str());
+                    let include_path = self
+                        .file_path
+                        .parent()
+                        .unwrap_or(Path::new(""))
+                        .join(string);
+                    let builder = GenoAstBuilder::new(include_path);
+
+                    declarations.extend(builder.build(read_to_string)?.declarations);
+                }
                 _ => {
                     unreachable!(); // Pest problem?
                 }
-            }?;
-
-            declarations.push(declaration);
+            };
         }
 
         let schema = ast::Schema {
@@ -95,7 +117,9 @@ impl GenoAstBuilder {
             let ident = inner_pairs.next().unwrap().as_str().to_string();
             let value_pair = inner_pairs.next().unwrap();
             let value = match value_pair.as_rule() {
-                Rule::string_literal => ast::MetadataValue::String(value_pair.as_str().to_string()),
+                Rule::string_literal => ast::MetadataValue::String(
+                    remove_first_and_last(&value_pair.as_str()).to_string(),
+                ),
                 Rule::integer_literal => ast::MetadataValue::Integer(
                     self.build_integer_literal(IntegerType::I64, value_pair)?,
                 ),
@@ -349,31 +373,18 @@ impl GenoAstBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::NamedTempFile;
-
-    fn gen_ast(input: &str) -> Result<ast::Schema, GenoError> {
-        let file = NamedTempFile::new().unwrap();
-        let path = file.path().to_path_buf();
-        fs::write(&path, input).unwrap();
-
-        GenoAstBuilder::new(path).build()
-    }
+    use crate::ast::*;
 
     #[test]
     fn happy_path() {
-        let input = r#"
-meta { format = 1 }
-enum enum1: i16 {
-    default = -1,
-    banana = 0,
-    apple = 1,
-    orange = 2,
-    kiwiFruit = 3,
-    pear = 4,
+        let input_a = r#"
+meta {
+    format = 1,
+    other = "value",
 }
+include "b.geno"
 // Another comment
-struct type1 {
+struct Type1 {
     alpha: i8,
     alpha_beta: u8,
     alphaBeta: i16,
@@ -398,23 +409,69 @@ struct type1 {
     s2: string?,
     b1: bool,
     b2: bool?,
-    e1: enum1,
-    e2: enum1?,
+    e1: Enum1,
+    e2: Enum1?,
     r1: [ string ],
     r2: [ string ]?,
     r3: [ string; 10],
     m1: { string : f64 },
     m2: { string : string },
     m3: { string : bool },
-    t1: type1,
-}"#;
-        gen_ast(&input).unwrap();
+    t1: Type1?,
+}"#
+        .to_string();
+        let input_b = r#"
+meta { format = 1 }
+enum Enum1: i16 {
+    default = -1,
+    banana = 0,
+    apple = 1,
+    orange = 2,
+    kiwiFruit = 3,
+    pear = 4,
+}"#
+        .to_string();
+
+        let ast = GenoAstBuilder::new(Path::new("a.geno").to_path_buf())
+            .build(&|path: &Path| {
+                if path == Path::new("b.geno") {
+                    Result::Ok(input_b.clone())
+                } else if path == Path::new("a.geno") {
+                    Result::Ok(input_a.clone())
+                } else {
+                    panic!("Bad path: {:?}", path)
+                }
+            })
+            .unwrap();
+
+        let meta_other = ast.metadata.get_key_value("other");
+
+        assert!(meta_other.is_some());
+        assert_eq!(
+            *meta_other.unwrap().1,
+            MetadataValue::String("value".to_string())
+        );
+
+        let enum_enum1 = ast
+            .declarations
+            .iter()
+            .find(|d| matches!(d, Declaration::Enum { ident, .. } if ident == "Enum1"));
+
+        assert!(enum_enum1.is_some());
+
+        let struct_type1 = ast
+            .declarations
+            .iter()
+            .find(|d| matches!(d, Declaration::Struct { ident, .. } if ident == "Type1"));
+
+        assert!(struct_type1.is_some());
     }
 
     #[test]
     fn bad_parse() {
-        let input = "meta { ";
-        let result = gen_ast(&input);
+        let input = "meta { ".to_string();
+        let result =
+            GenoAstBuilder::new(PathBuf::new()).build(&|_path: &Path| Result::Ok(input.clone()));
 
         match result {
             Err(GenoError::Parse { .. }) => {
@@ -431,8 +488,11 @@ struct type1 {
         let input = r#"
 meta { format = 1 }
 enum A:i16 { v = 0xffffffff, }
-"#;
-        let result = gen_ast(&input);
+"#
+        .to_string();
+
+        let result =
+            GenoAstBuilder::new(PathBuf::new()).build(&|_path: &Path| Result::Ok(input.clone()));
 
         match result {
             Err(GenoError::NumberRange { .. }) => {
