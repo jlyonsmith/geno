@@ -4,14 +4,7 @@ meta {
 
 // Everything that Geno can do
 
-// Fruits
-enum Enum1: i16 {
-  none = -1,
-  apple = 1,
-	orange = 2,
-	kiwiFruit = 3,
-	pear = 4,
-}
+include "include.geno"
 
 // Everything
 struct Type1 {
@@ -48,6 +41,5 @@ struct Type1 {
 	m1: { i32 : f64 },
 	m2: { string : string },
 	m3: { string : bool },
-	t1: Type1, // Nested type
-	t2: Type1?, // Nullable nested type
+	t1: Type1?, // Nullable nested type
 }

@@ -1,0 +1,12 @@
+meta {
+    format = 1,
+}
+
+// Fruits
+enum Enum1: i16 {
+  none = -1,
+  apple = 1,
+	orange = 2,
+	kiwiFruit = 3,
+	pear = 4,
+}
