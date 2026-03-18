@@ -14,8 +14,7 @@ use std::{
     name = "geno",
     version,
     about = "Geno schema compiler",
-    long_about = "Geno is a schema compiler for generating source code from a schema definition.",
-    trailing_var_arg = true
+    long_about = "Geno is a schema compiler for generating source code from a schema definition."
 )]
 struct Cli {
     /// Input .geno file
@@ -35,7 +34,7 @@ struct Cli {
     #[arg(value_name = "FORMAT", short = 'f', long)]
     format: Option<String>,
 
-    #[arg(allow_hyphen_values = true)]
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     extra_args: Vec<String>,
 }
 
@@ -93,10 +92,7 @@ fn run() -> anyhow::Result<i32> {
             ]),
         )
     } else {
-        cmd(
-            format!("geno-{}", format),
-            itertools::concat(vec![vec!["--"], extra_args]),
-        )
+        cmd(format!("geno-{}", format), extra_args)
     };
     let ast_bytes = rmp_serde::to_vec(&ast).context("Failed to serialize AST to MessagePack")?;
     let output = cmd_expr

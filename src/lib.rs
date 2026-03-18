@@ -53,7 +53,10 @@ impl GenoAstBuilder {
         &self,
         read_to_string: &impl Fn(&Path) -> std::io::Result<String>,
     ) -> Result<ast::Schema, GenoError> {
-        let input = read_to_string(&self.file_path)?;
+        let input = read_to_string(&self.file_path).map_err(|e| GenoError::Io {
+            file: self.file_path.clone(),
+            error: e,
+        })?;
         let mut schema_pairs = match GenoParser::parse(Rule::_schema, &input) {
             Ok(pairs) => pairs,
             Err(err) => {

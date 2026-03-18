@@ -1,7 +1,10 @@
 use crate::Rule;
 use pest::iterators::Pair;
 use pest::{Span, error::LineColLocation};
-use std::{fmt::Display, path::Path};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 /// A location within source file
@@ -46,8 +49,13 @@ impl Display for Location {
 #[derive(Error, Debug)]
 pub enum GenoError {
     /// I/O error
-    #[error("i/o error")]
-    Io(#[from] std::io::Error),
+    #[error("{error} on '{file}'")]
+    Io {
+        /// Path of the file that caused the error
+        file: PathBuf,
+        /// The I/O error that occurred
+        error: std::io::Error,
+    },
     /// Parsing error
     #[error("unable to parse '{content}' ({file}:{location})")]
     Parse {
