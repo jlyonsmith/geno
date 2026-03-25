@@ -65,6 +65,9 @@ fn run() -> anyhow::Result<i32> {
     let reader = |path: &_| std::fs::read_to_string(path);
     let ast = ast_builder.build(&reader)?;
 
+    // Validate the AST
+    ast.validate()?;
+
     // If the user specified an AST output path, write the AST to that file and exit
     if let Some(ast_path) = cli.ast_path {
         let mut file = File::create(&ast_path).context(format!(

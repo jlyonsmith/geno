@@ -9,7 +9,7 @@ include "include.geno"
 // Everything
 struct Type1 {
 	alpha: i8,
-	alpha_beta: u8,
+	beta: u8,
 	alphaBeta: i16,
 	a4: u16,
 	a5: i32,

@@ -7,7 +7,7 @@
 //! After generating, run `dart run build_runner build` to produce the `.g.dart` part file.
 use anyhow::Context;
 use clap::Parser;
-use geno::ast;
+use geno::{ast, case};
 use std::fmt::Write as _;
 use std::io::{self, Read};
 
@@ -84,14 +84,18 @@ fn generate(schema: &ast::Schema, part_name: Option<&str>) -> String {
     out
 }
 
-fn generate_enum(out: &mut String, ident: &str, variants: &[(String, ast::IntegerValue)]) {
-    let dart_name = to_pascal_case(ident);
+fn generate_enum(
+    out: &mut String,
+    ident: &ast::Ident,
+    variants: &[(ast::Ident, ast::IntegerValue)],
+) {
+    let dart_name = case::to_pascal(ident.as_str());
 
     writeln!(out, "@JsonEnum(valueField: 'value')").unwrap();
     writeln!(out, "enum {dart_name} {{").unwrap();
 
-    for (i, (variant_name, value)) in variants.iter().enumerate() {
-        let dart_variant = to_lower_camel_case(variant_name);
+    for (i, (variant_ident, value)) in variants.iter().enumerate() {
+        let dart_variant = case::to_camel(variant_ident.as_str());
         let actual_value = integer_value_str(value);
         let trailing = if i < variants.len() - 1 { "," } else { ";" };
         writeln!(out, "  {dart_variant}({actual_value}){trailing}").unwrap();
@@ -103,17 +107,17 @@ fn generate_enum(out: &mut String, ident: &str, variants: &[(String, ast::Intege
     writeln!(out, "}}").unwrap();
 }
 
-fn generate_struct(out: &mut String, ident: &str, fields: &[(String, ast::FieldType)]) {
-    let dart_name = to_pascal_case(ident);
+fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, ast::FieldType)]) {
+    let dart_name = case::to_pascal(ident.as_str());
 
     writeln!(out, "@JsonSerializable()").unwrap();
     writeln!(out, "class {dart_name} {{").unwrap();
 
     // Fields
-    for (field_name, field_type) in fields {
-        let dart_field = to_lower_camel_case(field_name);
-        if dart_field != *field_name {
-            writeln!(out, "  @JsonKey(name: '{field_name}')").unwrap();
+    for (field_ident, field_type) in fields {
+        let dart_field = case::to_camel(&field_ident.as_str());
+        if dart_field != *field_ident.as_str() {
+            writeln!(out, "  @JsonKey(name: '{0}')", field_ident.as_str()).unwrap();
         }
         writeln!(out, "  final {} {dart_field};", field_type_str(field_type)).unwrap();
     }
@@ -121,8 +125,8 @@ fn generate_struct(out: &mut String, ident: &str, fields: &[(String, ast::FieldT
     // Constructor
     writeln!(out).unwrap();
     writeln!(out, "  {dart_name}({{").unwrap();
-    for (field_name, field_type) in fields {
-        let dart_field = to_lower_camel_case(field_name);
+    for (field_ident, field_type) in fields {
+        let dart_field = case::to_camel(&field_ident.as_str());
         if is_nullable(field_type) {
             writeln!(out, "    this.{dart_field},").unwrap();
         } else {
@@ -152,8 +156,8 @@ fn field_type_str(ft: &ast::FieldType) -> String {
             let base = builtin_type_str(bt);
             if *nullable { format!("{base}?") } else { base }
         }
-        ast::FieldType::UserDefined(name, nullable) => {
-            let dart_name = to_pascal_case(name);
+        ast::FieldType::UserDefined(ident, nullable) => {
+            let dart_name = case::to_pascal(ident.as_str());
             if *nullable {
                 format!("{dart_name}?")
             } else {
@@ -203,50 +207,4 @@ fn integer_value_str(v: &ast::IntegerValue) -> String {
         ast::IntegerValue::U32(n) => n.to_string(),
         ast::IntegerValue::U64(n) => n.to_string(),
     }
-}
-
-/// Converts a string to PascalCase.
-/// "type1" -> "Type1", "kiwiFruit" -> "KiwiFruit", "alpha_beta" -> "AlphaBeta"
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => {
-                    let mut s = c.to_uppercase().to_string();
-                    s.push_str(chars.as_str());
-                    s
-                }
-            }
-        })
-        .collect()
-}
-
-/// Converts a string to lowerCamelCase.
-/// "alpha_beta" -> "alphaBeta", "AlphaBeta" -> "alphaBeta"
-fn to_lower_camel_case(s: &str) -> String {
-    let parts: Vec<&str> = s.split('_').collect();
-    let mut result = String::new();
-
-    for (i, part) in parts.iter().enumerate() {
-        let mut chars = part.chars();
-        match chars.next() {
-            None => {}
-            Some(c) => {
-                if i == 0 {
-                    for lc in c.to_lowercase() {
-                        result.push(lc);
-                    }
-                } else {
-                    for uc in c.to_uppercase() {
-                        result.push(uc);
-                    }
-                }
-                result.push_str(chars.as_str());
-            }
-        }
-    }
-
-    result
 }

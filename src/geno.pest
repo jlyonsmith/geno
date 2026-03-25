@@ -38,7 +38,7 @@ integer_literal = @{ ("0b" ~ ASCII_BIN_DIGIT+) | ("0x" ~ ASCII_HEX_DIGIT+) | (("
 string_literal  = @{ "\"" ~ ("\\\"" | !("\"") ~ ANY)* ~ "\"" }
 
 // Identifier
-identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+identifier = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 
 // Whitespace and comments (silently consumed)
 WHITESPACE = _{ " " | "\t" | NEWLINE }

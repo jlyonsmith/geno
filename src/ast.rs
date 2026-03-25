@@ -1,6 +1,6 @@
-use crate::error::*;
+use crate::{Location, case, error::*};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::{cmp::Eq, collections::HashSet, hash::Hash, path::PathBuf};
 
 /// Enum representing integer types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -66,6 +66,35 @@ pub enum BuiltinType {
     Bool,
 }
 
+/// Identifier type
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Ident {
+    /// The name of the identifier
+    pub name: String,
+    /// The location of the identifier in the source file
+    pub location: Location,
+}
+
+impl Ident {
+    /// Returns a reference to the name of the identifier
+    pub fn as_str(&self) -> &str {
+        self.name.as_str()
+    }
+
+    /// Returns a reference to the location of the identifier
+    pub fn as_location(&self) -> &Location {
+        &self.location
+    }
+}
+
+impl Hash for Ident {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl Eq for Ident {}
+
 /// Enum representing all field types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FieldType {
@@ -76,7 +105,7 @@ pub enum FieldType {
     /// Builtin type
     Builtin(BuiltinType, bool),
     /// User-defined type
-    UserDefined(String, bool),
+    UserDefined(Ident, bool),
 }
 
 /// Enum representing metadata values
@@ -94,18 +123,18 @@ pub enum Declaration {
     /// Enum declaration
     Enum {
         /// Enum identifier
-        ident: String,
+        ident: Ident,
         /// Enum base integer type
         base_type: IntegerType,
         /// Enum variants
-        variants: Vec<(String, IntegerValue)>,
+        variants: Vec<(Ident, IntegerValue)>,
     },
     /// Struct declaration
     Struct {
         /// Struct identifier
-        ident: String,
+        ident: Ident,
         /// Struct fields
-        fields: Vec<(String, FieldType)>,
+        fields: Vec<(Ident, FieldType)>,
     },
 }
 
@@ -113,21 +142,19 @@ pub enum Declaration {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Schema {
     /// Schema metadata
-    pub metadata: HashMap<String, MetadataValue>,
+    pub metadata: Vec<(Ident, MetadataValue)>,
     /// Schema declarations
     pub declarations: Vec<Declaration>,
+    /// Nested ASTs
+    pub nested_asts: Vec<Schema>,
+    /// Source file path of the schema
+    pub file_path: PathBuf,
 }
 
 impl Schema {
-    /// Validate the schema, checking for duplicate type definitions and duplicate fields/variants within each declaration
+    /// Validate the schema
     pub fn validate(&self) -> Result<(), GenoError> {
-        let expected_format: i64 = 1;
-
-        if self.metadata.get("format")
-            != Some(&MetadataValue::Integer(IntegerValue::I64(expected_format)))
-        {
-            return Err(GenoError::InvalidMetadataFormat());
-        }
+        self.validate_metadata_format()?;
 
         let mut type_names = HashSet::new();
 
@@ -137,49 +164,105 @@ impl Schema {
                 Declaration::Enum {
                     ident, variants, ..
                 } => {
-                    if !type_names.insert(ident.as_str()) {
-                        return Err(GenoError::DuplicateType(ident.clone()));
+                    // Ensure that the ident starts with an uppercase letter
+                    if !case::is_first_char_uppercase(ident.as_str()) {
+                        return Err(GenoError::new_must_start_with_uppercase(
+                            ident.as_str(),
+                            &self.file_path,
+                            ident.as_location(),
+                        ));
                     }
-                    let mut variant_names = HashSet::new();
-                    let mut variant_values = HashSet::new();
 
                     // Don't allow enum with no variants
                     if variants.is_empty() {
-                        return Err(GenoError::EmptyEnum(ident.clone()));
+                        return Err(GenoError::new_empty_enum(
+                            ident.as_str(),
+                            &self.file_path,
+                            ident.as_location(),
+                        ));
                     }
 
+                    let mut variant_names = HashSet::new();
+                    let mut variant_values = HashSet::new();
+
                     for (variant_name, variant_value) in variants {
+                        // Ensure that the variant name starts with a lowercase letter
+                        if !case::is_first_char_lowercase(variant_name.as_str()) {
+                            return Err(GenoError::new_must_start_with_lowercase(
+                                variant_name.as_str(),
+                                &self.file_path,
+                                variant_name.as_location(),
+                            ));
+                        }
+
                         if !variant_names.insert(variant_name.as_str()) {
-                            return Err(GenoError::DuplicateVariant(
-                                ident.clone(),
-                                variant_name.clone(),
+                            return Err(GenoError::new_duplicate_variant(
+                                ident.as_str(),
+                                variant_name.as_str(),
+                                &self.file_path,
+                                variant_name.as_location(),
                             ));
                         }
 
                         let value_str = Self::integer_value_str(variant_value);
 
                         if !variant_values.insert(value_str.clone()) {
-                            return Err(GenoError::DuplicateVariantValue(
-                                variant_name.clone(),
-                                value_str.clone(),
+                            return Err(GenoError::new_duplicate_variant_value(
+                                variant_name.as_str(),
+                                &value_str,
+                                &self.file_path,
+                                variant_name.as_location(),
                             ));
                         }
+                    }
+
+                    if !type_names.insert(ident.as_str()) {
+                        return Err(GenoError::new_duplicate_type(
+                            ident.as_str(),
+                            &self.file_path,
+                            ident.as_location(),
+                        ));
                     }
                 }
 
                 Declaration::Struct { ident, fields } => {
-                    if !type_names.insert(ident.as_str()) {
-                        return Err(GenoError::DuplicateType(ident.clone()));
+                    // Ensure that the ident starts with an uppercase letter
+                    if !case::is_first_char_uppercase(ident.as_str()) {
+                        return Err(GenoError::new_must_start_with_uppercase(
+                            ident.as_str(),
+                            &self.file_path,
+                            ident.as_location(),
+                        ));
                     }
+
                     let mut field_names = HashSet::new();
 
-                    for (field_name, _) in fields {
-                        if !field_names.insert(field_name.as_str()) {
-                            return Err(GenoError::DuplicateField(
-                                ident.clone(),
-                                field_name.clone(),
+                    for (file_ident, _) in fields {
+                        // Ensure that the field name starts with a lowercase letter
+                        if !case::is_first_char_lowercase(file_ident.as_str()) {
+                            return Err(GenoError::new_must_start_with_lowercase(
+                                file_ident.as_str(),
+                                &self.file_path,
+                                file_ident.as_location(),
                             ));
                         }
+
+                        if !field_names.insert(file_ident.as_str()) {
+                            return Err(GenoError::new_duplicate_field(
+                                ident.as_str(),
+                                file_ident.as_str(),
+                                &self.file_path,
+                                file_ident.as_location(),
+                            ));
+                        }
+                    }
+
+                    if !type_names.insert(ident.as_str()) {
+                        return Err(GenoError::new_duplicate_type(
+                            ident.as_str(),
+                            &self.file_path,
+                            ident.as_location(),
+                        ));
                     }
                 }
             }
@@ -192,6 +275,30 @@ impl Schema {
                     self.check_undefined_types(field_type, &type_names)?;
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    fn validate_metadata_format(&self) -> Result<(), GenoError> {
+        const EXPECTED_FORMAT: i64 = 1;
+        let actual_format = self.metadata.iter().find(|(k, _)| k.name == "format");
+
+        if let Some(actual_format) = actual_format {
+            if let MetadataValue::Integer(IntegerValue::I64(value)) = &actual_format.1 {
+                if *value != EXPECTED_FORMAT {
+                    return Err(GenoError::new_invalid_metadata_format(
+                        actual_format.0.as_str(),
+                        &self.file_path,
+                        &actual_format.0.as_location(),
+                    ));
+                }
+            }
+        } else {
+            return Err(GenoError::new_missing_metadata_format(
+                &self.file_path,
+                &Location { line: 1, column: 1 },
+            ));
         }
 
         Ok(())
@@ -216,9 +323,13 @@ impl Schema {
         type_names: &HashSet<&str>,
     ) -> Result<(), GenoError> {
         match field_type {
-            FieldType::UserDefined(name, _) => {
-                if !type_names.contains(name.as_str()) {
-                    return Err(GenoError::UndefinedType(name.clone()));
+            FieldType::UserDefined(ident, _) => {
+                if !type_names.contains(ident.as_str()) {
+                    return Err(GenoError::new_undefined_type(
+                        ident.as_str(),
+                        &self.file_path,
+                        ident.as_location(),
+                    ));
                 }
             }
             FieldType::Array(inner, _, _) => {

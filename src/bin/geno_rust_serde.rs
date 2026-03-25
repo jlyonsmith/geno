@@ -1,5 +1,5 @@
 use anyhow::Context;
-use geno::ast;
+use geno::{ast, case};
 use std::fmt::Write as _;
 use std::io::{self, Read};
 
@@ -56,11 +56,11 @@ fn generate(schema: &ast::Schema) -> String {
 
 fn generate_enum(
     out: &mut String,
-    ident: &str,
+    ident: &ast::Ident,
     base_type: &ast::IntegerType,
-    variants: &[(String, ast::IntegerValue)],
+    variants: &[(ast::Ident, ast::IntegerValue)],
 ) {
-    let rust_name = to_pascal_case(ident);
+    let rust_name = case::to_pascal(ident.as_str());
 
     writeln!(
         out,
@@ -72,15 +72,20 @@ fn generate_enum(
 
     let mut first = true;
 
-    for (variant_name, value) in variants {
-        let rust_variant = to_pascal_case(variant_name);
+    for (variant_ident, value) in variants {
+        let rust_variant = case::to_pascal(variant_ident.as_str());
 
         if first {
             writeln!(out, "    #[default]").unwrap();
             first = false;
         }
-        if rust_variant != *variant_name {
-            writeln!(out, "    #[serde(rename = \"{variant_name}\")]").unwrap();
+        if rust_variant != *variant_ident.as_str() {
+            writeln!(
+                out,
+                "    #[serde(rename = \"{0}\")]",
+                variant_ident.as_str()
+            )
+            .unwrap();
         }
         writeln!(out, "    {rust_variant} = {},", integer_value_str(value)).unwrap()
     }
@@ -88,8 +93,8 @@ fn generate_enum(
     writeln!(out, "}}").unwrap();
 }
 
-fn generate_struct(out: &mut String, ident: &str, fields: &[(String, ast::FieldType)]) {
-    let rust_name = to_pascal_case(ident);
+fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, ast::FieldType)]) {
+    let rust_name = case::to_pascal(ident.as_str());
 
     writeln!(
         out,
@@ -98,10 +103,10 @@ fn generate_struct(out: &mut String, ident: &str, fields: &[(String, ast::FieldT
     .unwrap();
     writeln!(out, "pub struct {rust_name} {{").unwrap();
 
-    for (field_name, field_type) in fields {
-        let rust_field = to_snake_case(field_name);
-        if rust_field != *field_name {
-            writeln!(out, "    #[serde(rename = \"{field_name}\")]").unwrap();
+    for (field_ident, field_type) in fields {
+        let rust_field = case::to_snake(field_ident.as_str());
+        if rust_field != *field_ident.as_str() {
+            writeln!(out, "    #[serde(rename = \"{0}\")]", field_ident.as_str()).unwrap();
         }
         writeln!(out, "    pub {rust_field}: {},", field_type_str(field_type)).unwrap();
     }
@@ -119,8 +124,9 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 base
             }
         }
-        ast::FieldType::UserDefined(name, nullable) => {
-            let rust_name = to_pascal_case(name);
+        ast::FieldType::UserDefined(ident, nullable) => {
+            let rust_name = case::to_pascal(ident.as_str());
+
             if *nullable {
                 format!("Option<{rust_name}>")
             } else {
@@ -188,37 +194,4 @@ fn integer_value_str(v: &ast::IntegerValue) -> String {
         ast::IntegerValue::U32(n) => n.to_string(),
         ast::IntegerValue::U64(n) => n.to_string(),
     }
-}
-
-/// Converts a string to PascalCase.
-/// "type1" -> "Type1", "kiwiFruit" -> "KiwiFruit", "alpha_beta" -> "AlphaBeta"
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => {
-                    let mut s = c.to_uppercase().to_string();
-                    s.push_str(chars.as_str());
-                    s
-                }
-            }
-        })
-        .collect()
-}
-
-/// Converts a string to snake_case.
-/// "alphaBeta" -> "alpha_beta", "alpha_beta" -> "alpha_beta"
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        for lc in c.to_lowercase() {
-            result.push(lc);
-        }
-    }
-    result
 }
