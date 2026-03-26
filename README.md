@@ -22,17 +22,25 @@ There are several existing packing protocols with schema languages. In particula
 
  While they all generally have excellent programming language support, the schema languages for each are understandably tied to the underlying packing algorithms, and can be a little quirky. They also have some gaps. For example, it seems that most of these protocols existed before nullable types were standard across programming languages.
 
-For my projects, I have found that the [MessagePack](https://msgpack.org/) protocol is actually the easiest packing protocol to work with, even if it is a little slower than the others. It's easy to integrate, perhaps because it is the closest to JSON, and JSON is still the most universal serialization format on the Internet.
+For my projects, I have found that the [MessagePack](https://msgpack.org/) protocol is actually the easiest packing protocol to work with across languages, even if it is a little slower than the others. It's easy to integrate, perhaps because it is the closest to JSON, and JSON is still the most universal serialization format on the Internet.
 
-You could say that Geno is a schema language for MessagePack, which it is. But I think, more importantly, Geno  easily supports other formats, such as JSON, YAML, TOML and [TOON](https://github.com/toon-format/toon). And, you could even use it to generate schemas for any of the above protocols.  So really, Geno is a schema definition language that easily supports any modern language and packing protocol.
+I originally built Geno as a schema language for MessagePack. But I realized tha Geno could easily supports other formats, such as JSON, YAML, TOML and [TOON](https://github.com/toon-format/toon) and so on. You could even use it to generate schemas for any of the above protocols.  So really, Geno is a schema definition language that easily supports combination of modern language and packing protocol.
 
-Finally, I designed the AST for Geno to be a simple as possible, which makes it easy for Claude Code and other AI's to comprehend in a small number tokens.  This ought to make it easy to create generators for your programming language and packing protocol of choice.
+Finally, I designed the AST for Geno to be a simple as possible, which makes it easy for Claude Code and other AI's to comprehend in a small number of tokens.  This ought to make it easy to create generators for your programming language and packing protocol of choice.
+
+## Architecture
+
+Geno uses a multi-process pipeline. The main `geno` binary parses the schema and serializes the AST to MessagePack. It then pipes those bytes to a code generator binary (`geno-<format>`) via stdin, which writes generated source code to stdout.
+
+```
+.geno file ──► geno (parser + validator) ──► MessagePack AST ──► geno-<format> ──► source code
+```
 
 ## Schema Language
 
-Geno schemas consist of a single `meta` section followed by any number of `enum` and `struct` declarations.
+The recommended extension for Geno files is `.geno`.  Geno schemas consist of a single `meta` section followed by any number of `enum` and `struct` declarations.  Schemas can be nested using the `include` statement.  For example, you could have a file called `common.geno`:
 
-```
+```geno
 meta {
     format = 1,
 }
@@ -43,6 +51,16 @@ enum fruit: i16 {
     kiwiFruit = 3,
     pear, // auto-incremented to 4
 }
+```
+
+And another file in the same directory called `order.geno`:
+
+```geno
+meta {
+    format = 1,
+}
+
+include "./common.geno"
 
 struct order {
     id: u64,
@@ -56,7 +74,8 @@ struct order {
     items: [order; 10],   // fixed-length array
 }
 ```
-The recommended extension for Geno is `.geno`.
+
+Whether nesting is preserved in the generated code is dependent on the generator implementation; the AST structures track the nesting.
 
 ### Metadata
 
@@ -82,7 +101,7 @@ Otherwise, the `meta` section can contain any values that you like. You can use 
 
 ### Enums
 
-Enums have an optional integer base type (defaults to `i32`). Variant values can be explicit or auto-incremented from the previous value.
+Enums have an optional integer base type (which defaults to `i32`). Variant values must be given explicitly and there cannot be variants with the same  value.
 
 ```
 enum color: u8 {
@@ -96,23 +115,30 @@ Integer literals support decimal, hex (`0xFF`), and binary (`0b1010`) notation.
 
 ### Comments
 
-Single-line comments with `//`.
+Single-line comments with `//` are supported.
 
 ## Code Generators
+
+Geno comes with some built-in generators for several language/encoding formats and serve as examples of how to write your own generator:
 
 | Format | Binary | Description |
 |--------|--------|-------------|
 | `rust-serde` | `geno-rust-serde` | Rust structs/enums with `Serialize`/`Deserialize` derives |
 | `dart-mp` | `geno-dart-mp` | Dart classes/enums with MessagePack `toBytes`/`fromBytes` serialization |
+| `dart-json` | `geno-dart-json` | Dart classes/enums with `json_annotation` and `json_serializable` support |
 
-### Rust Serde Output
+### Rust and Serde
+
+The binary `geno-rust-serde` generates code that:
 
 - Derives `Debug`, `Clone`, `PartialEq`, `Serialize`, `Deserialize`
 - Converts type names to `PascalCase` and field names to `snake_case`
 - Adds `#[serde(rename = "...")]` when names are converted
 - Maps arrays to `Vec<T>` or `[T; N]`, maps to `HashMap<K, V>`, nullable to `Option<T>`
 
-### Dart MessagePack Output
+### Dart and MessagePack
+
+The binary `geno-dart-mp` generates code that:
 
 - Generates classes with `final` fields and constructors with `required` named arguments
 - Converts type names to `PascalCase` and field/variant names to `lowerCamelCase`
@@ -120,7 +146,53 @@ Single-line comments with `//`.
 - Handles nested structures, nullable types, lists, and maps
 - All Dart integer types map to `int`, floats to `double`
 
-## Usage
+### Dart and JSON
+
+The binary `geno-dart-json` generates code that:
+
+- Generates classes with `json_annotation`
+- Converts type names to `PascalCase` and field/variant names to `lowerCamelCase`
+- Generates classes with `fromJson` and `toJson` methods to support `json_serializable` codegen
+- Handles nested structures, nullable types, lists, and maps
+- All Dart integer types map to `int`, floats to `double`
+
+### Command Line
+
+```
+Geno is a schema compiler for generating source code from a schema definition.
+
+Usage: geno [OPTIONS] <INPUT_FILE> [EXTRA_ARGS]...
+
+Arguments:
+  <INPUT_FILE>
+          Input .geno file
+  [EXTRA_ARGS]...
+
+Options:
+  -o, --output-path <OUTPUT_FILE>
+          Output file path for the generated source code, or STDOUT if not provided
+  -t, --ast-path <AST_FILE>
+          Intermediate AST file path for debugging. Program will write the AST to this file in MessagePack format then exit
+  -f, --format <FORMAT>
+          Output source code format (e.g. -f dart-json or -f rust-rmp)
+  -h, --help
+          Print help (see a summary with '-h')
+  -V, --version
+          Print version```
+
+Note that can pass arguments to the generators by adding `--` at the end of the command line.
+
+Set `GENO_DEBUG=1` to invoke code generators via `cargo run` instead of looking for installed binaries on `PATH`.
+
+```bash
+GENO_DEBUG=1 geno schema.geno -f rust-serde
+```
+
+See the `GenoError` enumeration in the documentation for the list of errors that the parser/validator looks for.
+
+Code generators are standalone binaries that read a MessagePack-encoded `Schema` from stdin. This makes it straightforward to add new target languages without modifying the core parser.
+
+### Example Usage
 
 ```bash
 # Generate Rust code to stdout
@@ -133,41 +205,9 @@ geno schema.geno -f dart-mp -o lib/generated.dart
 geno schema.geno -t schema.ast
 ```
 
-### CLI Options
-
-```
-geno <INPUT_FILE> [OPTIONS]
-
-Arguments:
-  <INPUT_FILE>           Input .geno file
-
-Options:
-  -o <OUTPUT_FILE>       Output file path (defaults to stdout)
-  -f <FORMAT>            Output format (e.g. rust-serde, dart-mp)
-  -t <AST_FILE>          Write intermediate AST in MessagePack format and exit
-```
-
-### Debug Mode
-
-Set `MORPH_DEBUG=1` to invoke code generators via `cargo run` instead of looking for installed binaries on `PATH`:
-
-```bash
-MORPH_DEBUG=1 geno schema.geno -f rust-serde
-```
-
-## Architecture
-
-Geno uses a multi-process pipeline. The main `geno` binary parses the schema and serializes the AST to MessagePack. It then pipes those bytes to a code generator binary (`geno-<format>`) via stdin, which writes generated source code to stdout.
-
-```
-.geno file ──► geno (parser + validator) ──► MessagePack AST ──► geno-<format> ──► source code
-```
-
-Code generators are standalone binaries that read a MessagePack-encoded `Schema` from stdin. This makes it straightforward to add new target languages without modifying the core parser.
-
 ## Building
 
-Requires the Rust toolchain.
+Building the `geno` core requires the Rust toolchain.  Generators can be written in any language, and just need to conform to the `geno-` prefix naming convention and be in the path to be used.
 
 ```bash
 # Build all binaries
@@ -176,13 +216,3 @@ cargo build --release
 # Install to ~/.cargo/bin
 cargo install --path .
 ```
-
-## Validation
-
-The compiler checks for:
-
-- Duplicate type names
-- Duplicate field names within a struct
-- Duplicate variant names within an enum
-- References to undefined user-defined types
-- Parse errors with line and column information
