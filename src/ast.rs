@@ -379,12 +379,14 @@ impl Schema {
     }
 
     fn flatten_nested<'a>(&'a self, declarations: &mut Vec<&'a Declaration>) {
-        for decl in self.declarations.iter() {
-            declarations.push(&decl);
-        }
-
+        // First, flatten nested ASTs. This keeps the order of nested ASTs.
         for ast in &self.nested_asts {
             ast.flatten_nested(declarations);
+        }
+
+        // Then, add this AST's declarations
+        for decl in self.declarations.iter() {
+            declarations.push(&decl);
         }
     }
 }
