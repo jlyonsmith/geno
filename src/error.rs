@@ -6,10 +6,10 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum GenoError {
     /// I/O error
-    #[error("{error} on '{file}'")]
+    #[error("{error} on '{file_path}'")]
     Io {
         /// Path of the file that caused the error
-        file: PathBuf,
+        file_path: PathBuf,
         /// The I/O error that occurred
         error: std::io::Error,
     },

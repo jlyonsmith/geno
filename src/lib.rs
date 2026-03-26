@@ -19,7 +19,7 @@ pub use location::*;
 #[cfg(test)]
 mod tests {
     use crate::{ast, ast_builder::*, error::*};
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     #[test]
     fn happy_path() {
@@ -79,10 +79,11 @@ enum Enum1: i16 {
         .to_string();
 
         let ast = GenoAstBuilder::new(Path::new("a.geno").to_path_buf())
+            .expect("failed to initialize ast builder")
             .build(&|path: &Path| {
-                if path == Path::new("b.geno") {
+                if path.ends_with("b.geno") {
                     Result::Ok(input_b.clone())
-                } else if path == Path::new("a.geno") {
+                } else if path.ends_with("a.geno") {
                     Result::Ok(input_a.clone())
                 } else {
                     panic!("Bad path: {:?}", path)
@@ -115,8 +116,9 @@ enum Enum1: i16 {
     #[test]
     fn bad_parse() {
         let input = "meta { ".to_string();
-        let result =
-            GenoAstBuilder::new(PathBuf::new()).build(&|_path: &Path| Result::Ok(input.clone()));
+        let result = GenoAstBuilder::new(Path::new("/a.geno").to_path_buf())
+            .expect("failed to initialize ast builder")
+            .build(&|_path: &Path| Result::Ok(input.clone()));
 
         match result {
             Err(GenoError::Parse { .. }) => {
@@ -136,8 +138,9 @@ enum A:i16 { v = 0xffffffff, }
 "#
         .to_string();
 
-        let result =
-            GenoAstBuilder::new(PathBuf::new()).build(&|_path: &Path| Result::Ok(input.clone()));
+        let result = GenoAstBuilder::new(Path::new("a.geno").to_path_buf())
+            .expect("failed to initialize ast builder")
+            .build(&|_path: &Path| Result::Ok(input.clone()));
 
         match result {
             Err(GenoError::NumberRange { .. }) => {

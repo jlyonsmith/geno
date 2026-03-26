@@ -1,7 +1,10 @@
 use crate::{Location, ast, error::*};
 use pest::{Parser as PestParser, iterators::Pair};
 use pest_derive::Parser;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{self, Path, PathBuf},
+};
 
 // Put the Pest parser in a private module to suppress doc warnings
 // See [Issue #326](https://github.com/pest-parser/pest/issues/326)
@@ -41,8 +44,23 @@ pub struct GenoAstBuilder {
 impl GenoAstBuilder {
     /// Create a new Geno AST builder from a file path.  A file path is required
     /// in order to give meaningful error messages.
-    pub fn new(file_path: PathBuf) -> Self {
-        GenoAstBuilder { file_path }
+    pub fn new(file_path: PathBuf) -> Result<Self, std::io::Error> {
+        Ok(GenoAstBuilder {
+            file_path: path::absolute(file_path.clone())?,
+        })
+    }
+
+    /// Create a new Geno AST builder from a file path relative to the current file.
+    pub fn from(&self, file_path: &Path) -> Self {
+        let include_path = self
+            .file_path
+            .parent()
+            .unwrap_or(Path::new("/"))
+            .join(file_path);
+
+        Self {
+            file_path: include_path,
+        }
     }
 
     /// Build and validate the AST
@@ -50,10 +68,15 @@ impl GenoAstBuilder {
         &self,
         read_to_string: &impl Fn(&Path) -> std::io::Result<String>,
     ) -> Result<ast::Schema, GenoError> {
+        let mut file_paths = HashSet::<PathBuf>::new();
+
+        file_paths.insert(self.file_path.clone());
+
         let input = read_to_string(&self.file_path).map_err(|e| GenoError::Io {
-            file: self.file_path.clone(),
+            file_path: self.file_path.clone(),
             error: e,
         })?;
+
         let mut schema_pairs = match GenoParser::parse(Rule::_schema, &input) {
             Ok(pairs) => pairs,
             Err(err) => {
@@ -78,16 +101,14 @@ impl GenoAstBuilder {
                 Rule::enum_decl => declarations.push(self.build_enum_decl(pair)?),
                 Rule::struct_decl => declarations.push(self.build_struct_decl(pair)?),
                 Rule::include_stmt => {
-                    // TODO: Need to check for circular includes, and avoid re-including the same file
-                    let string = remove_quotes(&pair.into_inner().next().unwrap().as_str());
-                    let include_path = self
-                        .file_path
-                        .parent()
-                        .unwrap_or(Path::new(""))
-                        .join(string);
-                    let builder = GenoAstBuilder::new(include_path);
+                    let nested_file_path =
+                        Path::new(remove_quotes(&pair.into_inner().next().unwrap().as_str()));
+                    let builder = self.from(&nested_file_path);
 
-                    nested_asts.push(builder.build(read_to_string)?);
+                    if !file_paths.contains(&builder.file_path) {
+                        file_paths.insert(builder.file_path.clone());
+                        nested_asts.push(builder.build(read_to_string)?);
+                    }
                 }
                 _ => {
                     unreachable!(); // Pest problem?
