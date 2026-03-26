@@ -50,19 +50,6 @@ impl GenoAstBuilder {
         })
     }
 
-    /// Create a new Geno AST builder from a file path relative to the current file.
-    pub fn from(&self, file_path: &Path) -> Self {
-        let include_path = self
-            .file_path
-            .parent()
-            .unwrap_or(Path::new("/"))
-            .join(file_path);
-
-        Self {
-            file_path: include_path,
-        }
-    }
-
     /// Build and validate the AST
     pub fn build(
         &self,
@@ -103,7 +90,15 @@ impl GenoAstBuilder {
                 Rule::include_stmt => {
                     let nested_file_path =
                         Path::new(remove_quotes(&pair.into_inner().next().unwrap().as_str()));
-                    let builder = self.from(&nested_file_path);
+                    let include_path = self
+                        .file_path
+                        .parent()
+                        .unwrap_or(Path::new("/"))
+                        .join(nested_file_path);
+                    let builder = GenoAstBuilder::new(include_path).map_err(|e| GenoError::Io {
+                        file_path: self.file_path.clone(),
+                        error: e,
+                    })?;
 
                     if !file_paths.contains(&builder.file_path) {
                         file_paths.insert(builder.file_path.clone());
