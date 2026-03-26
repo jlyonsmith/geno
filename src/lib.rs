@@ -95,17 +95,17 @@ enum Enum1: i16 {
         let meta_other = ast.metadata.iter().find(|(ident, _)| ident.name == "other");
 
         assert!(meta_other.is_some());
-        assert_eq!(meta_other.unwrap().0.as_str(), "value");
+        assert_eq!(meta_other.unwrap().0.as_str(), "other");
 
-        let enum_enum1 = ast
-            .declarations
+        let decls = ast.flatten_decls();
+
+        let enum_enum1 = decls
             .iter()
             .find(|d| matches!(d, ast::Declaration::Enum { ident, .. } if ident.name == "Enum1"));
 
         assert!(enum_enum1.is_some());
 
-        let struct_type1 = ast
-            .declarations
+        let struct_type1 = decls
             .iter()
             .find(|d| matches!(d, ast::Declaration::Struct { ident, .. } if ident.name == "Type1"));
 

@@ -80,7 +80,9 @@ fn generate(schema: &ast::Schema) -> String {
     writeln!(out).unwrap();
     writeln!(out, "import 'package:messagepack/messagepack.dart';").unwrap();
 
-    for decl in &schema.declarations {
+    let decls = schema.flatten_decls();
+
+    for decl in decls {
         writeln!(out).unwrap();
         match decl {
             ast::Declaration::Enum {

@@ -39,7 +39,9 @@ fn generate(schema: &ast::Schema) -> String {
     writeln!(out, "use serde::{{Deserialize, Serialize}};").unwrap();
     writeln!(out, "use std::collections::HashMap;").unwrap();
 
-    for decl in &schema.declarations {
+    let decls = schema.flatten_decls();
+
+    for decl in decls {
         writeln!(out).unwrap();
         match decl {
             ast::Declaration::Enum {

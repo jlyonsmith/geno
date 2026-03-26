@@ -152,11 +152,18 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Validate the schema
+    /// Validate the schema and all nested schemas
     pub fn validate(&self) -> Result<(), GenoError> {
-        self.validate_metadata_format()?;
+        let mut type_names = HashSet::<String>::new();
 
-        let mut type_names = HashSet::new();
+        self.first_pass_validate(&mut type_names)?;
+        self.second_pass_validate(&type_names)?;
+
+        Ok(())
+    }
+
+    fn first_pass_validate(&self, type_names: &mut HashSet<String>) -> Result<(), GenoError> {
+        self.validate_metadata_format()?;
 
         // Check for duplicate type definitions and duplicate fields/variants within each declaration
         for decl in &self.declarations {
@@ -195,6 +202,7 @@ impl Schema {
                             ));
                         }
 
+                        // Check for duplicate variant names
                         if !variant_names.insert(variant_name.as_str()) {
                             return Err(GenoError::new_duplicate_variant(
                                 ident.as_str(),
@@ -206,6 +214,7 @@ impl Schema {
 
                         let value_str = Self::integer_value_str(variant_value);
 
+                        // Check for duplicate variant values
                         if !variant_values.insert(value_str.clone()) {
                             return Err(GenoError::new_duplicate_variant_value(
                                 variant_name.as_str(),
@@ -216,7 +225,8 @@ impl Schema {
                         }
                     }
 
-                    if !type_names.insert(ident.as_str()) {
+                    // Record type name, checking for duplicates
+                    if !type_names.insert(ident.as_str().to_string()) {
                         return Err(GenoError::new_duplicate_type(
                             ident.as_str(),
                             &self.file_path,
@@ -247,6 +257,7 @@ impl Schema {
                             ));
                         }
 
+                        // Ensure that the field name is unique
                         if !field_names.insert(file_ident.as_str()) {
                             return Err(GenoError::new_duplicate_field(
                                 ident.as_str(),
@@ -257,7 +268,8 @@ impl Schema {
                         }
                     }
 
-                    if !type_names.insert(ident.as_str()) {
+                    // Record type name, checking for duplicates
+                    if !type_names.insert(ident.as_str().to_string()) {
                         return Err(GenoError::new_duplicate_type(
                             ident.as_str(),
                             &self.file_path,
@@ -268,13 +280,27 @@ impl Schema {
             }
         }
 
-        // Check for undefined user-defined types
+        // Perform first pass on nested ASTs
+        for ast in &self.nested_asts {
+            ast.first_pass_validate(type_names)?;
+        }
+
+        Ok(())
+    }
+
+    fn second_pass_validate(&self, type_names: &HashSet<String>) -> Result<(), GenoError> {
+        // Check for undefined types in structs
         for decl in &self.declarations {
             if let Declaration::Struct { fields, .. } = decl {
                 for (_, field_type) in fields {
-                    self.check_undefined_types(field_type, &type_names)?;
+                    self.check_for_undefined_types(field_type, &type_names)?;
                 }
             }
+        }
+
+        // Perform first pass on nested ASTs
+        for ast in &self.nested_asts {
+            ast.second_pass_validate(type_names)?;
         }
 
         Ok(())
@@ -317,10 +343,10 @@ impl Schema {
         }
     }
 
-    fn check_undefined_types(
+    fn check_for_undefined_types(
         &self,
         field_type: &FieldType,
-        type_names: &HashSet<&str>,
+        type_names: &HashSet<String>,
     ) -> Result<(), GenoError> {
         match field_type {
             FieldType::UserDefined(ident, _) => {
@@ -333,13 +359,32 @@ impl Schema {
                 }
             }
             FieldType::Array(inner, _, _) => {
-                self.check_undefined_types(inner, type_names)?;
+                self.check_for_undefined_types(inner, type_names)?;
             }
             FieldType::Map(_, value_type, _) => {
-                self.check_undefined_types(value_type, type_names)?;
+                self.check_for_undefined_types(value_type, type_names)?;
             }
             FieldType::Builtin(_, _) => {}
         }
         Ok(())
+    }
+
+    /// Flattens the all nested AST declarations
+    pub fn flatten_decls<'a>(&'a self) -> Vec<&'a Declaration> {
+        let mut declarations = Vec::new();
+
+        self.flatten_nested(&mut declarations);
+
+        declarations
+    }
+
+    fn flatten_nested<'a>(&'a self, declarations: &mut Vec<&'a Declaration>) {
+        for decl in self.declarations.iter() {
+            declarations.push(&decl);
+        }
+
+        for ast in &self.nested_asts {
+            ast.flatten_nested(declarations);
+        }
     }
 }

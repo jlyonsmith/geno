@@ -16,7 +16,7 @@ mod parser {
 use crate::ast::IntegerType;
 use parser::{GenoParser, Rule};
 
-fn remove_first_and_last(value: &str) -> &str {
+fn remove_quotes(value: &str) -> &str {
     let mut chars = value.chars();
 
     chars.next(); // Consume the first character
@@ -79,7 +79,7 @@ impl GenoAstBuilder {
                 Rule::struct_decl => declarations.push(self.build_struct_decl(pair)?),
                 Rule::include_stmt => {
                     // TODO: Need to check for circular includes, and avoid re-including the same file
-                    let string = remove_first_and_last(&pair.into_inner().next().unwrap().as_str());
+                    let string = remove_quotes(&pair.into_inner().next().unwrap().as_str());
                     let include_path = self
                         .file_path
                         .parent()
@@ -118,9 +118,9 @@ impl GenoAstBuilder {
             let ident = ast::Ident::from(ident_pair);
             let value_pair = inner_pairs.next().unwrap();
             let value = match value_pair.as_rule() {
-                Rule::string_literal => ast::MetadataValue::String(
-                    remove_first_and_last(&value_pair.as_str()).to_string(),
-                ),
+                Rule::string_literal => {
+                    ast::MetadataValue::String(remove_quotes(&value_pair.as_str()).to_string())
+                }
                 Rule::integer_literal => ast::MetadataValue::Integer(
                     self.build_integer_literal(IntegerType::I64, value_pair)?,
                 ),
