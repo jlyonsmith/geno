@@ -37,6 +37,7 @@ fn generate(schema: &ast::Schema) -> String {
     writeln!(out, "#![allow(unused_imports)]").unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use serde::{{Deserialize, Serialize}};").unwrap();
+    writeln!(out, "use serde_repr::{{Deserialize_repr, Serialize_repr}};").unwrap();
     writeln!(out, "use std::collections::HashMap;").unwrap();
 
     let decls = schema.flatten_decls();
@@ -66,7 +67,7 @@ fn generate_enum(
 
     writeln!(
         out,
-        "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]"
+        "#[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr, Default)]"
     )
     .unwrap();
     writeln!(out, "#[repr({})]", integer_type_str(base_type)).unwrap();
