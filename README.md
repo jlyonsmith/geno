@@ -41,9 +41,7 @@ Geno uses a multi-process pipeline. The main `geno` binary parses the schema and
 The recommended extension for Geno files is `.geno`.  Geno schemas consist of a single `meta` section followed by any number of `enum` and `struct` declarations.  Schemas can be nested using the `include` statement.  For example, you could have a file called `common.geno`:
 
 ```geno
-meta {
-    format = 1,
-}
+#[format = 1]
 
 enum fruit: i16 {
     apple = 1,
@@ -56,9 +54,7 @@ enum fruit: i16 {
 And another file in the same directory called `order.geno`:
 
 ```geno
-meta {
-    format = 1,
-}
+#[format = 1]
 
 include "./common.geno"
 
@@ -79,13 +75,13 @@ Whether nesting is preserved in the generated code is dependent on the generator
 
 ### Metadata
 
-There must be at least one key to define the schema format being used:
+One metadata value is required to define the schema format being used:
 
 | Key      | Values | Description |
 |----------|--------|-------------|
-| `format` | `1`    | This is the only supported schema value at present |
+| `format` | `1`    | This is the only supported format value at present |
 
-Otherwise, the `meta` section can contain any values that you like. You can use the `geno` crate to parse a `Schema` from a file and access the values easily.
+Metadata can contain any other values you want.  Use the `ast::Schema` struct to access the values in your code generator.
 
 ### Types
 

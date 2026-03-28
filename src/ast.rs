@@ -171,9 +171,9 @@ impl Schema {
                 Declaration::Enum {
                     ident, variants, ..
                 } => {
-                    // Ensure that the ident starts with an uppercase letter
-                    if !case::is_first_char_uppercase(ident.as_str()) {
-                        return Err(GenoError::new_must_start_with_uppercase(
+                    // Ensure that the ident is PascalCase
+                    if !case::is_pascal_case(ident.as_str()) {
+                        return Err(GenoError::new_must_be_pascal_case(
                             ident.as_str(),
                             &self.file_path,
                             ident.as_location(),
@@ -193,9 +193,9 @@ impl Schema {
                     let mut variant_values = HashSet::new();
 
                     for (variant_name, variant_value) in variants {
-                        // Ensure that the variant name starts with a lowercase letter
-                        if !case::is_first_char_lowercase(variant_name.as_str()) {
-                            return Err(GenoError::new_must_start_with_lowercase(
+                        // Ensure that the variant name is camelCase
+                        if !case::is_camel_case(variant_name.as_str()) {
+                            return Err(GenoError::new_must_be_camel_case(
                                 variant_name.as_str(),
                                 &self.file_path,
                                 variant_name.as_location(),
@@ -236,9 +236,9 @@ impl Schema {
                 }
 
                 Declaration::Struct { ident, fields } => {
-                    // Ensure that the ident starts with an uppercase letter
-                    if !case::is_first_char_uppercase(ident.as_str()) {
-                        return Err(GenoError::new_must_start_with_uppercase(
+                    // Ensure that the ident is PascalCase
+                    if !case::is_pascal_case(ident.as_str()) {
+                        return Err(GenoError::new_must_be_pascal_case(
                             ident.as_str(),
                             &self.file_path,
                             ident.as_location(),
@@ -248,9 +248,9 @@ impl Schema {
                     let mut field_names = HashSet::new();
 
                     for (file_ident, _) in fields {
-                        // Ensure that the field name starts with a lowercase letter
-                        if !case::is_first_char_lowercase(file_ident.as_str()) {
-                            return Err(GenoError::new_must_start_with_lowercase(
+                        // Ensure that the field name is camelCase
+                        if !case::is_camel_case(file_ident.as_str()) {
+                            return Err(GenoError::new_must_be_camel_case(
                                 file_ident.as_str(),
                                 &self.file_path,
                                 file_ident.as_location(),

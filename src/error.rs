@@ -118,8 +118,8 @@ pub enum GenoError {
         location: Location,
     },
     /// Must start with an uppercase letter
-    #[error("identifier {name} must start with an uppercase letter ({file_path}:{location})")]
-    MustStartWithUppercase {
+    #[error("identifier {name} must be Pascal case ({file_path}:{location})")]
+    MustBePascalCase {
         /// The name of the identifier
         name: String,
         /// File path of the schema
@@ -128,8 +128,8 @@ pub enum GenoError {
         location: Location,
     },
     /// Must start with a lowercase letter
-    #[error("identifier {name} must start with a lowercase letter ({file_path}:{location})")]
-    MustStartWithLowercase {
+    #[error("identifier {name} must be camel case ({file_path}:{location})")]
+    MustBeCamelCase {
         /// The name of the identifier
         name: String,
         /// File path of the schema
@@ -192,6 +192,6 @@ impl GenoError {
     define_error_new!(new_empty_enum, EmptyEnum, name);
     define_error_new!(new_invalid_metadata_format, InvalidMetadataFormat, value);
     define_error_new!(new_missing_metadata_format, MissingMetadataFormat);
-    define_error_new!(new_must_start_with_uppercase, MustStartWithUppercase, name);
-    define_error_new!(new_must_start_with_lowercase, MustStartWithLowercase, name);
+    define_error_new!(new_must_be_pascal_case, MustBePascalCase, name);
+    define_error_new!(new_must_be_camel_case, MustBeCamelCase, name);
 }

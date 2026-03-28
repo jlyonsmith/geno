@@ -74,7 +74,7 @@ impl GenoAstBuilder {
                 });
             }
         };
-        let metadata = self.build_meta_decl(schema_pairs.next().unwrap())?;
+        let metadata = self.build_metadata(schema_pairs.next().unwrap())?;
         let mut declarations = Vec::new();
         let mut nested_asts = Vec::new();
 
@@ -119,7 +119,7 @@ impl GenoAstBuilder {
         })
     }
 
-    fn build_meta_decl(
+    fn build_metadata(
         &self,
         pair: Pair<'_, Rule>,
     ) -> Result<Vec<(ast::Ident, ast::MetadataValue)>, GenoError> {

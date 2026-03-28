@@ -59,28 +59,38 @@ pub fn to_snake(s: &str) -> String {
     result
 }
 
-/// Returns `true` if the first character of the string is uppercase.
-pub fn is_first_char_uppercase(s: &str) -> bool {
-    // Get an iterator over the characters and try to get the first one
-    match s.chars().next() {
-        Some(first_char) => {
-            // Use the built-in method to check if the character is uppercase
-            first_char.is_uppercase() //
-        }
-        // If the string is empty, it doesn't have an uppercase first character
+/// Returns `true` if the name is in PascalCase (first character is uppercase).
+pub fn is_pascal_case(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.is_uppercase() && chars.all(|c| c.is_alphanumeric()),
         None => false,
     }
 }
 
-/// Returns `true` if the first character of the string is lowercase.
-pub fn is_first_char_lowercase(s: &str) -> bool {
-    // Get an iterator over the characters and try to get the first one
-    match s.chars().next() {
-        Some(first_char) => {
-            // Use the built-in method to check if the character is lowercase
-            first_char.is_lowercase() //
-        }
-        // If the string is empty, it doesn't have a lowercase first character
+/// Returns `true` if the name is in camelCase (first character is lowercase).
+pub fn is_camel_case(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.is_lowercase() && chars.all(|c| c.is_alphanumeric()),
         None => false,
+    }
+}
+
+mod test {
+    #[test]
+    fn test_is_pascal_case() {
+        assert!(super::is_pascal_case("Pascal"));
+        assert!(super::is_pascal_case("PascalCase"));
+        assert!(!super::is_pascal_case("camelCase"));
+        assert!(!super::is_pascal_case("snake_case"));
+    }
+
+    #[test]
+    fn test_is_camel_case() {
+        assert!(super::is_camel_case("camel"));
+        assert!(!super::is_camel_case("PascalCase"));
+        assert!(super::is_camel_case("camelCase"));
+        assert!(!super::is_camel_case("snake_case"));
     }
 }

@@ -1,6 +1,4 @@
-meta {
-    format = 1,
-}
+#[ format = 1, ]
 
 // Fruits
 enum Enum1: i16 {

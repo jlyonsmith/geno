@@ -1,6 +1,4 @@
-meta {
-    format = 1,
-}
+#[ format = 1 ]
 
 // Everything that Geno can do
 

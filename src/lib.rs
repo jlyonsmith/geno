@@ -24,10 +24,8 @@ mod tests {
     #[test]
     fn happy_path() {
         let input_a = r#"
-meta {
-    format = 1,
-    other = "value",
-}
+#[format = 1, other = "value",]
+
 include "b.geno"
 // Another comment
 struct Type1 {
@@ -67,7 +65,7 @@ struct Type1 {
 }"#
         .to_string();
         let input_b = r#"
-meta { format = 1 }
+#[format = 1]
 enum Enum1: i16 {
     default = -1,
     banana = 0,
@@ -133,7 +131,7 @@ enum Enum1: i16 {
     #[test]
     fn number_range() {
         let input = r#"
-meta { format = 1 }
+#[ format = 1 ]
 enum A:i16 { v = 0xffffffff, }
 "#
         .to_string();
