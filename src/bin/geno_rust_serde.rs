@@ -34,7 +34,11 @@ fn run() -> anyhow::Result<()> {
 fn generate(schema: &ast::Schema) -> String {
     let mut out = String::new();
 
-    writeln!(out, "#![allow(unused_imports)]").unwrap();
+    writeln!(
+        out,
+        "// Add #![allow(unused_imports)] to root project if needed"
+    )
+    .unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use serde::{{Deserialize, Serialize}};").unwrap();
     writeln!(out, "use serde_repr::{{Deserialize_repr, Serialize_repr}};").unwrap();
@@ -101,7 +105,7 @@ fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, 
 
     writeln!(
         out,
-        "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+        "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]"
     )
     .unwrap();
     writeln!(out, "pub struct {rust_name} {{").unwrap();
