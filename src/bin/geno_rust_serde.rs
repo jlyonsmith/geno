@@ -71,7 +71,7 @@ fn generate_enum(
 
     writeln!(
         out,
-        "#[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr, Default)]"
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, Default)]"
     )
     .unwrap();
     writeln!(out, "#[repr({})]", integer_type_str(base_type)).unwrap();
