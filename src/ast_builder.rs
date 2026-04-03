@@ -74,9 +74,9 @@ impl GenoAstBuilder {
                 });
             }
         };
-        let metadata = self.build_metadata(schema_pairs.next().unwrap())?;
+        let attributes = self.build_attributes(schema_pairs.next().unwrap())?;
         let mut declarations = Vec::new();
-        let mut nested_asts = Vec::new();
+        let mut includes = Vec::new();
 
         while let Some(pair) = schema_pairs.next() {
             if pair.as_rule() == Rule::EOI {
@@ -102,7 +102,7 @@ impl GenoAstBuilder {
 
                     if !file_paths.contains(&builder.file_path) {
                         file_paths.insert(builder.file_path.clone());
-                        nested_asts.push(builder.build(read_to_string)?);
+                        includes.push((vec![], builder.build(read_to_string)?));
                     }
                 }
                 _ => {
@@ -112,14 +112,14 @@ impl GenoAstBuilder {
         }
 
         Ok(ast::Schema {
-            metadata,
+            attributes,
             declarations,
-            nested_asts,
+            includes,
             file_path: self.file_path.clone(),
         })
     }
 
-    fn build_metadata(
+    fn build_attributes(
         &self,
         pair: Pair<'_, Rule>,
     ) -> Result<Vec<(ast::Ident, ast::MetadataValue)>, GenoError> {
@@ -127,7 +127,7 @@ impl GenoAstBuilder {
         let inner_pair = inner_pairs.next().unwrap();
         let mut metadata: Vec<(ast::Ident, ast::MetadataValue)> = Vec::new();
 
-        // Parse 'meta_data_entry' pairs
+        // Parse 'attribute_entry' pairs
         for entry_pair in inner_pair.into_inner() {
             let mut inner_pairs = entry_pair.into_inner();
             let ident_pair = inner_pairs.next().unwrap();
@@ -311,7 +311,7 @@ impl GenoAstBuilder {
         };
 
         // next_pair is now an 'enum_variant_list'
-        let mut variants: Vec<(ast::Ident, ast::IntegerValue)> = Vec::new();
+        let mut variants = Vec::new();
 
         for enum_variant_pair in next_pair.into_inner() {
             let mut variant_inner = enum_variant_pair.into_inner();
@@ -320,10 +320,11 @@ impl GenoAstBuilder {
             let variant_value =
                 self.build_integer_literal(base_type.clone(), variant_inner.next().unwrap())?;
 
-            variants.push((variant_ident, variant_value));
+            variants.push((vec![], variant_ident, variant_value));
         }
 
         Ok(ast::Declaration::Enum {
+            attributes: vec![],
             ident,
             base_type,
             variants,
@@ -341,7 +342,7 @@ impl GenoAstBuilder {
         let next_pair = inner_pairs.next().unwrap();
 
         // next_pair is now a 'struct_field_list'
-        let mut fields: Vec<(ast::Ident, ast::FieldType)> = Vec::new();
+        let mut fields = Vec::new();
 
         for struct_field_pair in next_pair.into_inner() {
             let mut struct_field_inner = struct_field_pair.into_inner();
@@ -349,13 +350,18 @@ impl GenoAstBuilder {
             let field_ident = ast::Ident::from(field_ident_pair);
 
             fields.push((
+                vec![],
                 field_ident,
                 self.build_field_type(struct_field_inner.next().unwrap())?,
             ));
         }
 
         // Parse struct declaration
-        Ok(ast::Declaration::Struct { ident, fields })
+        Ok(ast::Declaration::Struct {
+            attributes: vec![],
+            ident,
+            fields,
+        })
     }
 
     fn build_field_type<'a>(&self, pair: Pair<'a, Rule>) -> Result<ast::FieldType, GenoError> {

@@ -86,13 +86,16 @@ fn generate(schema: &ast::Schema) -> String {
         writeln!(out).unwrap();
         match decl {
             ast::Declaration::Enum {
+                attributes: _,
                 ident,
                 base_type,
                 variants,
             } => generate_enum(&mut out, ident, base_type, variants),
-            ast::Declaration::Struct { ident, fields } => {
-                generate_struct(&mut out, ident, fields, &enum_names)
-            }
+            ast::Declaration::Struct {
+                attributes: _,
+                ident,
+                fields,
+            } => generate_struct(&mut out, ident, fields, &enum_names),
         }
     }
 
@@ -103,13 +106,13 @@ fn generate_enum(
     out: &mut String,
     ident: &ast::Ident,
     _base_type: &ast::IntegerType,
-    variants: &[(ast::Ident, ast::IntegerValue)],
+    variants: &[(ast::Attributes, ast::Ident, ast::IntegerValue)],
 ) {
     let dart_name = case::to_pascal(ident.as_str());
 
     writeln!(out, "enum {dart_name} {{").unwrap();
 
-    for (i, (variant_name, value)) in variants.iter().enumerate() {
+    for (i, (_, variant_name, value)) in variants.iter().enumerate() {
         let dart_variant = case::to_camel(variant_name.as_str());
         let trailing = if i < variants.len() - 1 { "," } else { ";" };
         let actual_value = integer_value_str(value);
@@ -168,7 +171,7 @@ fn generate_enum(
 fn generate_struct(
     out: &mut String,
     ident: &ast::Ident,
-    fields: &[(ast::Ident, ast::FieldType)],
+    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
     enum_names: &HashSet<&str>,
 ) {
     let dart_name = case::to_pascal(ident.as_str());
@@ -176,7 +179,7 @@ fn generate_struct(
     writeln!(out, "class {dart_name} {{").unwrap();
 
     // Fields
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
         writeln!(out, "  final {} {dart_field};", field_type_str(field_type)).unwrap();
     }
@@ -184,7 +187,7 @@ fn generate_struct(
     // Constructor
     writeln!(out).unwrap();
     writeln!(out, "  {dart_name}({{").unwrap();
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
         if is_nullable(field_type) {
             writeln!(out, "    this.{dart_field},").unwrap();
@@ -211,7 +214,7 @@ fn generate_struct(
     // _pack
     writeln!(out).unwrap();
     writeln!(out, "  void _pack(Packer p) {{").unwrap();
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
         generate_pack_field(out, &dart_field, field_type, "    ", enum_names, 0);
     }
@@ -220,13 +223,13 @@ fn generate_struct(
     // _unpack
     writeln!(out).unwrap();
     writeln!(out, "  static {dart_name} _unpack(Unpacker u) {{").unwrap();
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
         let expr = generate_unpack_expr(field_type, enum_names);
         writeln!(out, "    final {dart_field} = {expr};").unwrap();
     }
     writeln!(out, "    return {dart_name}(").unwrap();
-    for (field_ident, _) in fields {
+    for (_, field_ident, _) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
         writeln!(out, "      {dart_field}: {dart_field},").unwrap();
     }

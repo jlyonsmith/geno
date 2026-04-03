@@ -50,11 +50,16 @@ fn generate(schema: &ast::Schema) -> String {
         writeln!(out).unwrap();
         match decl {
             ast::Declaration::Enum {
+                attributes: _,
                 ident,
                 base_type,
                 variants,
             } => generate_enum(&mut out, ident, base_type, variants),
-            ast::Declaration::Struct { ident, fields } => generate_struct(&mut out, ident, fields),
+            ast::Declaration::Struct {
+                attributes: _,
+                ident,
+                fields,
+            } => generate_struct(&mut out, ident, fields),
         }
     }
 
@@ -65,7 +70,7 @@ fn generate_enum(
     out: &mut String,
     ident: &ast::Ident,
     base_type: &ast::IntegerType,
-    variants: &[(ast::Ident, ast::IntegerValue)],
+    variants: &[(ast::Attributes, ast::Ident, ast::IntegerValue)],
 ) {
     let rust_name = case::to_pascal(ident.as_str());
 
@@ -79,7 +84,7 @@ fn generate_enum(
 
     let mut first = true;
 
-    for (variant_ident, value) in variants {
+    for (_, variant_ident, value) in variants {
         let rust_variant = case::to_pascal(variant_ident.as_str());
 
         if first {
@@ -100,7 +105,11 @@ fn generate_enum(
     writeln!(out, "}}").unwrap();
 }
 
-fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, ast::FieldType)]) {
+fn generate_struct(
+    out: &mut String,
+    ident: &ast::Ident,
+    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
+) {
     let rust_name = case::to_pascal(ident.as_str());
 
     writeln!(
@@ -110,7 +119,7 @@ fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, 
     .unwrap();
     writeln!(out, "pub struct {rust_name} {{").unwrap();
 
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let rust_field = case::to_snake(field_ident.as_str());
         if rust_field != *field_ident.as_str() {
             writeln!(out, "    #[serde(rename = \"{0}\")]", field_ident.as_str()).unwrap();

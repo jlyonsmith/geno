@@ -1,11 +1,13 @@
-#[ format = 1 ]
+#![format = 1]
 
 // Everything that Geno can do
 
+#[referenceOnly]
 include "include.geno"
 
 // Everything
-struct Type1 {
+#[rename = "MyType1"]
+struct Type1 {  // Comments can go here
 	alpha: i8,
 	beta: u8,
 	alphaBeta: i16,
@@ -32,6 +34,7 @@ struct Type1 {
 	b2: bool?,
 	e1: Enum1,
 	e2: Enum1?,
+	#[cpp = "CString"]
 	r1: [ string ],
 	r2: [ string ]?,
 	r3: [ string; 10], // Fixed length

@@ -111,6 +111,8 @@ pub enum FieldType {
 /// Enum representing metadata values
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MetadataValue {
+    /// Boolean value; present when the value is `true`
+    Boolean,
     /// String value
     String(String),
     /// Integer value
@@ -122,31 +124,38 @@ pub enum MetadataValue {
 pub enum Declaration {
     /// Enum declaration
     Enum {
+        /// Enum attributes
+        attributes: Attributes,
         /// Enum identifier
         ident: Ident,
         /// Enum base integer type
         base_type: IntegerType,
         /// Enum variants
-        variants: Vec<(Ident, IntegerValue)>,
+        variants: Vec<(Attributes, Ident, IntegerValue)>,
     },
     /// Struct declaration
     Struct {
+        /// Struct attributes
+        attributes: Attributes,
         /// Struct identifier
         ident: Ident,
         /// Struct fields
-        fields: Vec<(Ident, FieldType)>,
+        fields: Vec<(Attributes, Ident, FieldType)>,
     },
 }
+
+/// A list of attributes associated with a declaration
+pub type Attributes = Vec<(Ident, MetadataValue)>;
 
 /// Schema declaration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Schema {
     /// Schema metadata
-    pub metadata: Vec<(Ident, MetadataValue)>,
+    pub attributes: Attributes,
     /// Schema declarations
     pub declarations: Vec<Declaration>,
     /// Nested ASTs
-    pub nested_asts: Vec<Schema>,
+    pub includes: Vec<(Attributes, Schema)>,
     /// Source file path of the schema
     pub file_path: PathBuf,
 }
@@ -192,7 +201,7 @@ impl Schema {
                     let mut variant_names = HashSet::new();
                     let mut variant_values = HashSet::new();
 
-                    for (variant_name, variant_value) in variants {
+                    for (_, variant_name, variant_value) in variants {
                         // Ensure that the variant name is camelCase
                         if !case::is_camel_case(variant_name.as_str()) {
                             return Err(GenoError::new_must_be_camel_case(
@@ -235,7 +244,11 @@ impl Schema {
                     }
                 }
 
-                Declaration::Struct { ident, fields } => {
+                Declaration::Struct {
+                    attributes: _,
+                    ident,
+                    fields,
+                } => {
                     // Ensure that the ident is PascalCase
                     if !case::is_pascal_case(ident.as_str()) {
                         return Err(GenoError::new_must_be_pascal_case(
@@ -247,7 +260,7 @@ impl Schema {
 
                     let mut field_names = HashSet::new();
 
-                    for (file_ident, _) in fields {
+                    for (_, file_ident, _) in fields {
                         // Ensure that the field name is camelCase
                         if !case::is_camel_case(file_ident.as_str()) {
                             return Err(GenoError::new_must_be_camel_case(
@@ -281,7 +294,7 @@ impl Schema {
         }
 
         // Perform first pass on nested ASTs
-        for ast in &self.nested_asts {
+        for (_, ast) in &self.includes {
             ast.first_pass_validate(type_names)?;
         }
 
@@ -292,14 +305,14 @@ impl Schema {
         // Check for undefined types in structs
         for decl in &self.declarations {
             if let Declaration::Struct { fields, .. } = decl {
-                for (_, field_type) in fields {
+                for (_, _, field_type) in fields {
                     self.check_for_undefined_types(field_type, &type_names)?;
                 }
             }
         }
 
         // Perform first pass on nested ASTs
-        for ast in &self.nested_asts {
+        for (_, ast) in &self.includes {
             ast.second_pass_validate(type_names)?;
         }
 
@@ -308,7 +321,7 @@ impl Schema {
 
     fn validate_metadata_format(&self) -> Result<(), GenoError> {
         const EXPECTED_FORMAT: i64 = 1;
-        let actual_format = self.metadata.iter().find(|(k, _)| k.name == "format");
+        let actual_format = self.attributes.iter().find(|(k, _)| k.name == "format");
 
         if let Some(actual_format) = actual_format {
             if let MetadataValue::Integer(IntegerValue::I64(value)) = &actual_format.1 {
@@ -369,7 +382,7 @@ impl Schema {
         Ok(())
     }
 
-    /// Flattens the all nested AST declarations
+    /// Flattens all nested AST declarations
     pub fn flatten_decls<'a>(&'a self) -> Vec<&'a Declaration> {
         let mut declarations = Vec::new();
 
@@ -380,7 +393,7 @@ impl Schema {
 
     fn flatten_nested<'a>(&'a self, declarations: &mut Vec<&'a Declaration>) {
         // First, flatten nested ASTs. This keeps the order of nested ASTs.
-        for ast in &self.nested_asts {
+        for (_, ast) in &self.includes {
             ast.flatten_nested(declarations);
         }
 
