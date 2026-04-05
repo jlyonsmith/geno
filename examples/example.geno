@@ -5,6 +5,7 @@
 include "include.geno"
 
 // Everything
+#[bool_flag]
 struct Type1 {
 	alpha: i8,
 	beta: u8,
