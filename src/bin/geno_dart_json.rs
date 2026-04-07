@@ -79,7 +79,9 @@ fn generate(schema: &ast::Schema, part_name: Option<&str>) -> String {
             ast::Declaration::Enum {
                 ident, variants, ..
             } => generate_enum(&mut out, ident, variants),
-            ast::Declaration::Struct { ident, fields } => generate_struct(&mut out, ident, fields),
+            ast::Declaration::Struct { ident, fields, .. } => {
+                generate_struct(&mut out, ident, fields)
+            }
         }
     }
 
@@ -89,14 +91,14 @@ fn generate(schema: &ast::Schema, part_name: Option<&str>) -> String {
 fn generate_enum(
     out: &mut String,
     ident: &ast::Ident,
-    variants: &[(ast::Ident, ast::IntegerValue)],
+    variants: &[(ast::Attributes, ast::Ident, ast::IntegerValue)],
 ) {
     let dart_name = case::to_pascal(ident.as_str());
 
     writeln!(out, "@JsonEnum(valueField: 'value')").unwrap();
     writeln!(out, "enum {dart_name} {{").unwrap();
 
-    for (i, (variant_ident, value)) in variants.iter().enumerate() {
+    for (i, (_, variant_ident, value)) in variants.iter().enumerate() {
         let dart_variant = case::to_camel(variant_ident.as_str());
         let actual_value = integer_value_str(value);
         let trailing = if i < variants.len() - 1 { "," } else { ";" };
@@ -109,14 +111,18 @@ fn generate_enum(
     writeln!(out, "}}").unwrap();
 }
 
-fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, ast::FieldType)]) {
+fn generate_struct(
+    out: &mut String,
+    ident: &ast::Ident,
+    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
+) {
     let dart_name = case::to_pascal(ident.as_str());
 
     writeln!(out, "@JsonSerializable()").unwrap();
     writeln!(out, "class {dart_name} {{").unwrap();
 
     // Fields
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(&field_ident.as_str());
         if dart_field != *field_ident.as_str() {
             writeln!(out, "  @JsonKey(name: '{0}')", field_ident.as_str()).unwrap();
@@ -127,7 +133,7 @@ fn generate_struct(out: &mut String, ident: &ast::Ident, fields: &[(ast::Ident, 
     // Constructor
     writeln!(out).unwrap();
     writeln!(out, "  {dart_name}({{").unwrap();
-    for (field_ident, field_type) in fields {
+    for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(&field_ident.as_str());
         if is_nullable(field_type) {
             writeln!(out, "    this.{dart_field},").unwrap();
