@@ -1,7 +1,7 @@
 //! Lexical tokenizer for the Geno schema language.
 
 use crate::{
-    Location, Token, TokenKind, Tokenizer,
+    Location, Token, TokenKind, TokenizeError, Tokenizer,
     ast::{self, Attributes, FieldType},
 };
 use anyhow::anyhow;
@@ -11,13 +11,19 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
-    ptr::null,
     rc::Rc,
 };
 
 /// Error produced by the parser.
 #[derive(Debug, PartialEq)]
 pub enum ParserError {
+    /// Tokenizer error
+    TokenizerError {
+        /// The path to the file that caused the error
+        file_path: PathBuf,
+        /// The tokenizer error
+        error: TokenizeError,
+    },
     /// Unexpected token
     UnexpectedToken {
         /// The path to the file that caused the error
@@ -224,7 +230,14 @@ impl fmt::Display for ParserError {
 // #[error("identifier {name} must be Pascal case ({file_path}:{location})")]
 // #[error("identifier {name} must be camel case ({file_path}:{location})")]
 
-impl Error for ParserError {}
+impl Error for ParserError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ParserError::TokenizerError { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// Trait for resolving file paths and reading file contents.
 pub trait FileResolver {
@@ -903,7 +916,7 @@ impl Parser {
             tokenizer.next()?;
 
             let field_type = Box::new(self.parse_field_type(tokenizer)?);
-            let size = (if self.peek_token(tokenizer)?.kind == TokenKind::Semicolon {
+            let size = if self.peek_token(tokenizer)?.kind == TokenKind::Semicolon {
                 tokenizer.next()?;
 
                 let token = self.next_token(tokenizer)?;
@@ -918,7 +931,7 @@ impl Parser {
                 }
             } else {
                 None
-            });
+            };
             let token = self.next_token(tokenizer)?;
 
             if token.kind != TokenKind::BracketClose {
@@ -1007,7 +1020,8 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ast, error::*, *};
+    use crate::{ast, *};
+    use phf::phf_map;
     use std::{
         cell::RefCell,
         collections::HashSet,
@@ -1015,47 +1029,52 @@ mod tests {
         rc::Rc,
     };
 
+    static FILE_PATHS: phf::Map<&'static str, &'static str> = phf_map! {
+        "example.geno" => include_str!("../examples/example.geno"),
+        "include.geno" => include_str!("../examples/include.geno"),
+        "eof_1.geno" => include_str!("../examples/test/eof_1.geno"),
+        "number_range.geno" => include_str!("../examples/test/number_range.geno"),
+    };
+
+    struct TestFileResolver {
+        files: HashSet<PathBuf>,
+    }
+
+    impl TestFileResolver {
+        fn new() -> Self {
+            Self {
+                files: HashSet::new(),
+            }
+        }
+    }
+
+    impl FileResolver for TestFileResolver {
+        fn resolve_path(&mut self, path: &Path) -> Result<PathBuf, ResolverError> {
+            let path = path_clean::clean(match std::path::absolute(path) {
+                Ok(path) => path,
+                Err(e) => return Err(ResolverError::Io(e)),
+            });
+
+            if self.files.insert(path.clone()) {
+                Ok(path)
+            } else {
+                Err(ResolverError::DuplicateInclude(path))
+            }
+        }
+
+        fn read_to_string(&self, path: &Path) -> Result<String, ResolverError> {
+            let path = path.file_name().unwrap().to_str().unwrap();
+            FILE_PATHS
+                .get(path)
+                .ok_or(ResolverError::FileNotFound(PathBuf::from(path)))
+                .map(|s| s.to_string())
+        }
+    }
+
     #[test]
     fn happy_path() {
-        struct TestFileResolver {
-            files: HashSet<PathBuf>,
-        }
-
-        impl TestFileResolver {
-            fn new() -> Self {
-                Self {
-                    files: HashSet::new(),
-                }
-            }
-        }
-
-        impl FileResolver for TestFileResolver {
-            fn resolve_path(&mut self, path: &Path) -> Result<PathBuf, ResolverError> {
-                let path = path_clean::clean(match std::path::absolute(path) {
-                    Ok(path) => path,
-                    Err(e) => return Err(ResolverError::Io(e)),
-                });
-
-                if self.files.insert(path.clone()) {
-                    Ok(path)
-                } else {
-                    Err(ResolverError::DuplicateInclude(path))
-                }
-            }
-
-            fn read_to_string(&self, path: &Path) -> Result<String, ResolverError> {
-                if path.ends_with("example.geno") {
-                    Result::Ok(include_str!("../examples/example.geno").to_string())
-                } else if path.ends_with("include.geno") {
-                    Result::Ok(include_str!("../examples/include.geno").to_string())
-                } else {
-                    Err(ResolverError::FileNotFound(path.to_path_buf()))
-                }
-            }
-        }
-
         let ast = Parser::new(
-            PathBuf::from("./examples/example.geno"),
+            PathBuf::from("example.geno"),
             Rc::new(RefCell::new(TestFileResolver::new())),
         )
         .unwrap()
@@ -1088,41 +1107,40 @@ mod tests {
         assert!(enum_enum1.is_some());
     }
 
-    // #[test]
-    fn bad_parse() {
-        let input = "meta { ".to_string();
-        let result = GenoAstBuilder::new(Path::new("/a.geno").to_path_buf())
-            .expect("failed to initialize ast builder")
-            .build(&|_path: &Path| Result::Ok(input.clone()));
+    #[test]
+    fn end_of_file() {
+        let result = Parser::new(
+            PathBuf::from("eof_1.geno"),
+            Rc::new(RefCell::new(TestFileResolver::new())),
+        )
+        .unwrap()
+        .parse();
 
         match result {
-            Err(GenoError::Parse { .. }) => {
-                assert!(true);
+            Err(err) => {
+                assert!(err.downcast_ref::<ParserError>().is_some());
             }
             _ => {
-                panic!("expected GenoError::Parse");
+                panic!("expected an error");
             }
         }
     }
 
-    // #[test]
+    #[test]
     fn number_range() {
-        let input = r#"
-#[ format = 1 ]
-enum A:i16 { v = 0xffffffff, }
-"#
-        .to_string();
-
-        let result = GenoAstBuilder::new(Path::new("a.geno").to_path_buf())
-            .expect("failed to initialize ast builder")
-            .build(&|_path: &Path| Result::Ok(input.clone()));
+        let result = Parser::new(
+            PathBuf::from("number_range.geno"),
+            Rc::new(RefCell::new(TestFileResolver::new())),
+        )
+        .unwrap()
+        .parse();
 
         match result {
-            Err(GenoError::NumberRange { .. }) => {
-                assert!(true);
+            Err(err) => {
+                assert!(err.downcast_ref::<ParserError>().is_some());
             }
             _ => {
-                panic!("expected GenoError::NumberRange");
+                panic!("expected an error");
             }
         }
     }

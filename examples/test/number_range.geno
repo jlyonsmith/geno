@@ -1,0 +1,6 @@
+#![format = 1]
+
+enum Enum: u8 {
+  Value1 = 0x00,
+  ValueTooBig = 0xffff,
+}

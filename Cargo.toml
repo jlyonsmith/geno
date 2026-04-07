@@ -29,6 +29,9 @@ itertools = "0.14.0"
 strum = { version = "0.28.0", features = ["derive"] }
 fallible-iterator = "0.3.0"
 path-clean = "1.0.1"
+phf = { version = "0.13.1", features = ["macros"] }
+
+[dev-dependencies]
 
 [[bin]]
 name = "geno"
