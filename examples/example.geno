@@ -2,7 +2,7 @@
 
 // Everything that Geno can do
 
-#[referenceOnly]
+#[noCodeGen]
 include "include.geno"
 
 // Everything

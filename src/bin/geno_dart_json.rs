@@ -71,17 +71,16 @@ fn generate(schema: &ast::Schema, part_name: Option<&str>) -> String {
         .unwrap(),
     }
 
-    let decls = schema.flatten_decls();
+    let elements = schema.flatten_elements();
 
-    for decl in decls {
+    for element in elements {
         writeln!(out).unwrap();
-        match decl {
-            ast::Declaration::Enum {
+        match element {
+            ast::Element::Enum {
                 ident, variants, ..
             } => generate_enum(&mut out, ident, variants),
-            ast::Declaration::Struct { ident, fields, .. } => {
-                generate_struct(&mut out, ident, fields)
-            }
+            ast::Element::Struct { ident, fields, .. } => generate_struct(&mut out, ident, fields),
+            ast::Element::Include { .. } => {}
         }
     }
 

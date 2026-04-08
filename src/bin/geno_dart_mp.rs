@@ -68,10 +68,10 @@ fn generate(schema: &ast::Schema) -> String {
     let mut out = String::new();
 
     let enum_names: HashSet<&str> = schema
-        .declarations
+        .elements
         .iter()
         .filter_map(|d| match d {
-            ast::Declaration::Enum { ident, .. } => Some(ident.as_str()),
+            ast::Element::Enum { ident, .. } => Some(ident.as_str()),
             _ => None,
         })
         .collect();
@@ -80,22 +80,23 @@ fn generate(schema: &ast::Schema) -> String {
     writeln!(out).unwrap();
     writeln!(out, "import 'package:messagepack/messagepack.dart';").unwrap();
 
-    let decls = schema.flatten_decls();
+    let elements = schema.flatten_elements();
 
-    for decl in decls {
+    for element in elements {
         writeln!(out).unwrap();
-        match decl {
-            ast::Declaration::Enum {
+        match element {
+            ast::Element::Enum {
                 attributes: _,
                 ident,
                 base_type,
                 variants,
             } => generate_enum(&mut out, ident, base_type, variants),
-            ast::Declaration::Struct {
+            ast::Element::Struct {
                 attributes: _,
                 ident,
                 fields,
             } => generate_struct(&mut out, ident, fields, &enum_names),
+            ast::Element::Include { .. } => {}
         }
     }
 

@@ -3,6 +3,8 @@ use geno::{ast, case};
 use std::fmt::Write as _;
 use std::io::{self, Read};
 
+static NO_CODE_GEN: &str = "noCodeGen";
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("error: {err:#}");
@@ -44,26 +46,44 @@ fn generate(schema: &ast::Schema) -> String {
     writeln!(out, "use serde_repr::{{Deserialize_repr, Serialize_repr}};").unwrap();
     writeln!(out, "use std::collections::HashMap;").unwrap();
 
-    let decls = schema.flatten_decls();
+    generate_elements(&mut out, &schema.elements);
 
-    for decl in decls {
-        writeln!(out).unwrap();
-        match decl {
-            ast::Declaration::Enum {
+    out
+}
+
+fn generate_elements(out: &mut String, elements: &Vec<ast::Element>) {
+    for element in elements {
+        match element {
+            ast::Element::Enum {
                 attributes: _,
                 ident,
                 base_type,
                 variants,
-            } => generate_enum(&mut out, ident, base_type, variants),
-            ast::Declaration::Struct {
+            } => {
+                writeln!(out).unwrap();
+                generate_enum(out, ident, base_type, variants);
+            }
+            ast::Element::Struct {
                 attributes: _,
                 ident,
                 fields,
-            } => generate_struct(&mut out, ident, fields),
+            } => {
+                writeln!(out).unwrap();
+                generate_struct(out, ident, fields)
+            }
+            ast::Element::Include { attributes, schema } => {
+                if attributes
+                    .iter()
+                    .find(|attr| attr.0.name == NO_CODE_GEN)
+                    .is_some()
+                {
+                    continue;
+                }
+
+                generate_elements(out, &schema.elements);
+            }
         }
     }
-
-    out
 }
 
 fn generate_enum(

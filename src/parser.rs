@@ -76,10 +76,9 @@ impl Parser {
 
         let mut schema_attrs: Option<ast::Attributes> = None;
         let mut attrs: Option<ast::Attributes> = None;
-        let mut includes: Vec<(ast::Attributes, ast::Schema)> = vec![];
         let input = self.resolver.borrow().read_to_string()?;
         let mut tokenizer = Tokenizer::new(&input).peekable();
-        let mut declarations: Vec<ast::Declaration> = vec![];
+        let mut elements: Vec<ast::Element> = vec![];
 
         loop {
             let token = match tokenizer.peek()? {
@@ -115,22 +114,13 @@ impl Parser {
                     attrs = Some(self.parse_attributes(&mut tokenizer)?);
                 }
                 TokenKind::Struct => {
-                    let struct_decl = self.parse_struct(&mut tokenizer, attrs.take())?;
-
-                    declarations.push(struct_decl);
+                    elements.push(self.parse_struct(&mut tokenizer, attrs.take())?);
                 }
                 TokenKind::Enum => {
-                    let enum_decl = self.parse_enum(&mut tokenizer, attrs.take())?;
-
-                    declarations.push(enum_decl);
+                    elements.push(self.parse_enum(&mut tokenizer, attrs.take())?);
                 }
                 TokenKind::Include => {
-                    let include = (
-                        attrs.take().unwrap_or(vec![]),
-                        self.parse_include(&mut tokenizer)?,
-                    );
-
-                    includes.push(include);
+                    elements.push(self.parse_include(attrs.take(), &mut tokenizer)?);
                 }
                 _ => {
                     return Err(anyhow!(ParserError::UnexpectedToken {
@@ -143,8 +133,7 @@ impl Parser {
 
         let ast = ast::Schema {
             attributes: schema_attrs.unwrap_or(vec![]),
-            declarations,
-            includes,
+            elements,
             file_path: self.file_path(),
         };
 
@@ -347,7 +336,11 @@ impl Parser {
         };
     }
 
-    fn parse_include(&self, tokenizer: &mut PeekableTokenizer) -> anyhow::Result<ast::Schema> {
+    fn parse_include(
+        &self,
+        attributes: Option<ast::Attributes>,
+        tokenizer: &mut PeekableTokenizer,
+    ) -> anyhow::Result<ast::Element> {
         // Consume the Include token
         tokenizer.next()?;
 
@@ -362,14 +355,17 @@ impl Parser {
             }
         };
 
-        Ok(Parser::new(self.resolver.clone()).parse(&file_path)?)
+        Ok(ast::Element::Include {
+            attributes: attributes.unwrap_or(vec![]),
+            schema: Parser::new(self.resolver.clone()).parse(&file_path)?.into(),
+        })
     }
 
     fn parse_enum(
         &self,
         tokenizer: &mut PeekableTokenizer,
         attributes: Option<ast::Attributes>,
-    ) -> anyhow::Result<ast::Declaration> {
+    ) -> anyhow::Result<ast::Element> {
         // Consume the Enum token
         tokenizer.next()?;
 
@@ -511,7 +507,7 @@ impl Parser {
             }
         }
 
-        Ok(ast::Declaration::Enum {
+        Ok(ast::Element::Enum {
             attributes: attributes.unwrap_or(vec![]),
             ident,
             base_type,
@@ -523,7 +519,7 @@ impl Parser {
         &self,
         tokenizer: &mut PeekableTokenizer,
         attributes: Option<ast::Attributes>,
-    ) -> anyhow::Result<ast::Declaration> {
+    ) -> anyhow::Result<ast::Element> {
         // Consume the Struct token
         tokenizer.next()?;
 
@@ -623,7 +619,7 @@ impl Parser {
             }
         }
 
-        Ok(ast::Declaration::Struct {
+        Ok(ast::Element::Struct {
             attributes: attributes.unwrap_or(vec![]),
             ident,
             fields,
@@ -832,17 +828,17 @@ mod tests {
         assert_eq!(meta_other.unwrap().0.as_str(), "other");
 
         let struct_type1 = ast
-            .declarations
+            .elements
             .iter()
-            .find(|d| matches!(d, ast::Declaration::Struct { ident, .. } if ident.name == "Type1"));
+            .find(|d| matches!(d, ast::Element::Struct { ident, .. } if ident.name == "Type1"));
 
-        let decls = ast.flatten_decls();
+        let decls = ast.flatten_elements();
 
         assert!(struct_type1.is_some());
 
         let enum_enum1 = decls
             .iter()
-            .find(|d| matches!(d, ast::Declaration::Enum { ident, .. } if ident.name == "Enum1"));
+            .find(|d| matches!(d, ast::Element::Enum { ident, .. } if ident.name == "Enum1"));
 
         assert!(enum_enum1.is_some());
     }

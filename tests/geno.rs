@@ -35,7 +35,7 @@ fn parse_example_and_write_ast() {
 
     // Verify the AST deserializes back to a valid Schema
     let schema: geno::ast::Schema = rmp_serde::from_slice(&ast_bytes).unwrap();
-    assert!(!schema.declarations.is_empty());
+    assert!(!schema.elements.is_empty());
 }
 
 #[test]

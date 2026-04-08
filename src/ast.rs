@@ -119,9 +119,9 @@ pub enum MetadataValue {
     Integer(IntegerValue),
 }
 
-/// Enum representing declarations
+/// Enum representing elements
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Declaration {
+pub enum Element {
     /// Enum declaration
     Enum {
         /// Enum attributes
@@ -142,6 +142,13 @@ pub enum Declaration {
         /// Struct fields
         fields: Vec<(Attributes, Ident, FieldType)>,
     },
+    /// Include directive
+    Include {
+        /// Include attributes
+        attributes: Attributes,
+        /// Include path
+        schema: Box<Schema>,
+    },
 }
 
 /// A list of attributes associated with a declaration
@@ -152,10 +159,8 @@ pub type Attributes = Vec<(Ident, MetadataValue)>;
 pub struct Schema {
     /// Schema metadata
     pub attributes: Attributes,
-    /// Schema declarations
-    pub declarations: Vec<Declaration>,
-    /// Nested ASTs
-    pub includes: Vec<(Attributes, Schema)>,
+    /// Schema elements
+    pub elements: Vec<Element>,
     /// Source file path of the schema
     pub file_path: PathBuf,
 }
@@ -175,9 +180,9 @@ impl Schema {
         self.validate_metadata_format()?;
 
         // Check for duplicate type definitions and duplicate fields/variants within each declaration
-        for decl in &self.declarations {
+        for decl in &self.elements {
             match decl {
-                Declaration::Enum {
+                Element::Enum {
                     ident, variants, ..
                 } => {
                     // Ensure that the ident is PascalCase
@@ -244,7 +249,7 @@ impl Schema {
                     }
                 }
 
-                Declaration::Struct {
+                Element::Struct {
                     attributes: _,
                     ident,
                     fields,
@@ -290,12 +295,14 @@ impl Schema {
                         });
                     }
                 }
-            }
-        }
 
-        // Perform first pass on nested ASTs
-        for (_, ast) in &self.includes {
-            ast.first_pass_validate(type_names)?;
+                Element::Include {
+                    attributes: _,
+                    schema,
+                } => {
+                    schema.first_pass_validate(type_names)?;
+                }
+            }
         }
 
         Ok(())
@@ -303,17 +310,21 @@ impl Schema {
 
     fn second_pass_validate(&self, type_names: &HashSet<String>) -> Result<(), ParserError> {
         // Check for undefined types in structs
-        for decl in &self.declarations {
-            if let Declaration::Struct { fields, .. } = decl {
-                for (_, _, field_type) in fields {
-                    self.check_for_undefined_types(field_type, &type_names)?;
+        for element in &self.elements {
+            match element {
+                Element::Struct { fields, .. } => {
+                    for (_, _, field_type) in fields {
+                        self.check_for_undefined_types(field_type, &type_names)?;
+                    }
                 }
+                Element::Include {
+                    attributes: _,
+                    schema,
+                } => {
+                    schema.second_pass_validate(type_names)?;
+                }
+                _ => {}
             }
-        }
-
-        // Perform first pass on nested ASTs
-        for (_, ast) in &self.includes {
-            ast.second_pass_validate(type_names)?;
         }
 
         Ok(())
@@ -382,24 +393,28 @@ impl Schema {
         Ok(())
     }
 
-    /// Flattens all nested AST declarations
-    pub fn flatten_decls<'a>(&'a self) -> Vec<&'a Declaration> {
-        let mut declarations = Vec::new();
+    /// Flattens all nested AST elementarations
+    pub fn flatten_elements<'a>(&'a self) -> Vec<&'a Element> {
+        let mut elements = Vec::new();
 
-        self.flatten_nested(&mut declarations);
+        self.flatten_nested_elements(&mut elements);
 
-        declarations
+        elements
     }
 
-    fn flatten_nested<'a>(&'a self, declarations: &mut Vec<&'a Declaration>) {
-        // First, flatten nested ASTs. This keeps the order of nested ASTs.
-        for (_, ast) in &self.includes {
-            ast.flatten_nested(declarations);
-        }
-
-        // Then, add this AST's declarations
-        for decl in self.declarations.iter() {
-            declarations.push(&decl);
+    fn flatten_nested_elements<'a>(&'a self, elements: &mut Vec<&'a Element>) {
+        for element in &self.elements {
+            match element {
+                Element::Include {
+                    attributes: _,
+                    schema,
+                } => {
+                    schema.flatten_nested_elements(elements);
+                }
+                _ => {
+                    elements.push(&element);
+                }
+            }
         }
     }
 }
