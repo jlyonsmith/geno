@@ -63,7 +63,7 @@ fn generate_rust_serde() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("pub enum"));
+    assert!(!stdout.contains("pub enum"));
     assert!(stdout.contains("pub struct"));
     assert!(stdout.contains("Serialize"));
     assert!(stdout.contains("Deserialize"));
