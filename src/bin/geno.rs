@@ -1,15 +1,16 @@
 use anyhow::{Context, bail};
-use clap::Parser;
 use duct::cmd;
-use geno::GenoAstBuilder;
+use geno::StandardFileResolver;
 use std::{
+    cell::RefCell,
     fs::{self, File},
     io::{Write, stdout},
     path::PathBuf,
     process::exit,
+    rc::Rc,
 };
 
-#[derive(Parser)]
+#[derive(clap::Parser)]
 #[command(
     name = "geno",
     version,
@@ -41,16 +42,16 @@ struct Cli {
 fn main() {
     match run() {
         Ok(code) => exit(code),
-        Err(root_err) => {
-            for err in root_err.chain() {
-                eprintln!("error: {}", err);
-            }
+        Err(err) => {
+            eprintln!("error: {}", err);
             exit(1);
         }
     }
 }
 
 fn run() -> anyhow::Result<i32> {
+    use clap::Parser;
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
@@ -61,9 +62,8 @@ fn run() -> anyhow::Result<i32> {
     };
 
     // Parse the input string into an AST
-    let ast_builder = GenoAstBuilder::new(cli.input_path)?;
-    let reader = |path: &_| std::fs::read_to_string(path);
-    let ast = ast_builder.build(&reader)?;
+    let ast = geno::Parser::new(Rc::new(RefCell::new(StandardFileResolver::new())))
+        .parse(&cli.input_path)?;
 
     // Validate the AST
     ast.validate()?;

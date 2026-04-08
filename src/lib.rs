@@ -8,14 +8,14 @@ pub mod ast; // Keep the `ast::` module prefixwhen exporting from this crate
 /// Namespace containing case conversion utilities
 pub mod case; // Keep the `case::` module prefix when exporting from this crate
 
-mod ast_builder;
-mod error;
+mod file_resolver;
 mod location;
 mod parser;
+mod parser_error;
 mod tokenizer;
 
-pub use ast_builder::*;
-pub use error::*;
+pub use file_resolver::*;
 pub use location::*;
 pub use parser::*;
-pub(crate) use tokenizer::*;
+pub use parser_error::*;
+pub use tokenizer::*;

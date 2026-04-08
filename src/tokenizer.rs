@@ -128,11 +128,11 @@ pub struct Token {
 ///
 /// # Example
 /// ```
-/// use geno::tokenizer::{Tokenizer, TokenKind};
+/// use geno::{Tokenizer, TokenKind, Token};
+/// use fallible_iterator::FallibleIterator;
 ///
 /// let src = r#"#![ format = 1 ] struct Foo { x: i32 }"#;
-/// let tokens: Vec<_> = Tokenizer::new(src).collect();
-/// assert!(tokens.iter().all(|t| t.is_ok()));
+/// let tokens: Vec<Token> = Tokenizer::new(src).collect().unwrap();
 /// ```
 pub struct Tokenizer<'a> {
     input: &'a str,
