@@ -14,8 +14,8 @@ use std::{
 #[command(
     name = "geno",
     version,
-    about = "Geno schema compiler",
-    long_about = "Geno is a schema compiler for generating source code from a schema definition."
+    about = "Geno Structure Compiler",
+    long_about = "Geno is a compiler for generating source code for different languages from from generic structure definitions.  It works by compiling a .geno file into an intermediate AST representation, then generating source code from that AST. It uses a pipeline model to generate code.  Generators are simply executables with the name `geno-` followed by the format name (e.g. `geno-dart-json`). You can pass parameters to the generator by adding a `--` separator after the last `geno` argument and then the generator's parameters."
 )]
 struct Cli {
     /// Input .geno file

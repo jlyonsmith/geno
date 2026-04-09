@@ -12,28 +12,12 @@ The name **geno** comes from the word **genome**, the set of genetic instruction
 
 > This project is still in development. In particular, the schema language is not yet stable. Please feel free to contribute!
 
-## Why?
-
-There are several existing packing protocols with schema languages. In particular:
-
-- [FlatBuffers](https://flatbuffers.dev/)
-- [Cap'n Proto](https://capnproto.org/)
-- [Protocol Buffers](https://protobuf.dev/) (also referred to as ProtoBuf)
-
- While they all generally have excellent programming language support, the schema languages for each are understandably tied to the underlying packing algorithms, and can be a little quirky. They also have some gaps. For example, it seems that most of these protocols existed before nullable types were standard across programming languages.
-
-For my projects, I have found that the [MessagePack](https://msgpack.org/) protocol is actually the easiest packing protocol to work with across languages, even if it is a little slower than the others. It's easy to integrate, perhaps because it is the closest to JSON, and JSON is still the most universal serialization format on the Internet.
-
-I originally built Geno as a schema language for MessagePack. But I realized tha Geno could easily supports other formats, such as JSON, YAML, TOML and [TOON](https://github.com/toon-format/toon) and so on. You could even use it to generate schemas for any of the above protocols.  So really, Geno is a schema definition language that easily supports combination of modern language and packing protocol.
-
-Finally, I designed the AST for Geno to be a simple as possible, which makes it easy for Claude Code and other AI's to comprehend in a small number of tokens.  This ought to make it easy to create generators for your programming language and packing protocol of choice.
-
 ## Architecture
 
 Geno uses a multi-process pipeline. The main `geno` binary parses the schema and serializes the AST to MessagePack. It then pipes those bytes to a code generator binary (`geno-<format>`) via stdin, which writes generated source code to stdout.
 
 ```
-.geno file ──► geno (parser + validator) ──► MessagePack AST ──► geno-<format> ──► source code
+`.geno` file ──► geno (parser + validator) ──► AST (serialized with MessagePack) ──► `geno-<format>` ──► source code
 ```
 
 ## Schema Language
@@ -41,7 +25,7 @@ Geno uses a multi-process pipeline. The main `geno` binary parses the schema and
 The recommended extension for Geno files is `.geno`.  Geno schemas consist of a single `meta` section followed by any number of `enum` and `struct` declarations.  Schemas can be nested using the `include` statement.  For example, you could have a file called `common.geno`:
 
 ```geno
-#[format = 1]
+#![format = 1]
 
 enum fruit: i16 {
     apple = 1,
@@ -54,7 +38,7 @@ enum fruit: i16 {
 And another file in the same directory called `order.geno`:
 
 ```geno
-#[format = 1]
+#![format = 1]
 
 include "./common.geno"
 
@@ -73,15 +57,40 @@ struct order {
 
 Whether nesting is preserved in the generated code is dependent on the generator implementation; the AST structures track the nesting.
 
-### Metadata
+### Attributes
 
-One metadata value is required to define the schema format being used:
+Geno supports adding attributes to language elements.  The syntax is loosely modelled after the Rust programming language.
+
+There are two attribute levels in Geno metadata:
+
+- A file level attribute block starts with `#![` and ends with `]`
+- Language element level attributes start with `#[` and ends with `]`
+
+Attribute values come in three types:
+
+- **Boolean** This attribute is `true` if present, otherwise `false`, e.g. `#[boolAttr]`
+- **Integer** This is a signed integer value, e.g. `#[version = 10]`
+- **String** This is a string surrounded by double quotes, e.g. `#[name = "blah"]`
+
+Language elements are:
+
+- `enum`
+- `struct`
+- `include`
+- enum variants
+- structure fields
+
+A file level attribute block can only appear once in each `.geno` file. Element level attributes and can appear once before each specific language element. 
+
+One file level atttribute value is required to define the schema format being used:
 
 | Key      | Values | Description |
 |----------|--------|-------------|
 | `format` | `1`    | This is the only supported format value at present |
 
-Metadata can contain any other values you want.  Use the `ast::Schema` struct to access the values in your code generator.
+Use the `Attributes` member of the different elements in the AST to access values in code generators.
+
+> Right now there are no pre-defined attributes other than `format`. We may need to add a prefix system to avoid conflicts, or create a table of common ones. 
 
 ### Types
 
@@ -131,6 +140,7 @@ The binary `geno-rust-serde` generates code that:
 - Converts type names to `PascalCase` and field names to `snake_case`
 - Adds `#[serde(rename = "...")]` when names are converted
 - Maps arrays to `Vec<T>` or `[T; N]`, maps to `HashMap<K, V>`, nullable to `Option<T>`
+- Supports supressing `include` code with `#[noCodeAttr]` to avoid duplicate type definitions
 
 ### Dart and MessagePack
 
@@ -139,7 +149,7 @@ The binary `geno-dart-mp` generates code that:
 - Generates classes with `final` fields and constructors with `required` named arguments
 - Converts type names to `PascalCase` and field/variant names to `lowerCamelCase`
 - Generates `toBytes()` and `static fromBytes()` methods using the [`messagepack`](https://pub.dev/packages/messagepack) package
-- Handles nested structures, nullable types, lists, and maps
+- Maps arrays to `List<T>` and maps to `Map<K, V>`, nullable to a Dart nullable
 - All Dart integer types map to `int`, floats to `double`
 
 ### Dart and JSON
@@ -149,7 +159,7 @@ The binary `geno-dart-json` generates code that:
 - Generates classes with `json_annotation`
 - Converts type names to `PascalCase` and field/variant names to `lowerCamelCase`
 - Generates classes with `fromJson` and `toJson` methods to support `json_serializable` codegen
-- Handles nested structures, nullable types, lists, and maps
+- Maps arrays to `List<T>` and maps to `Map<K, V>`, nullable to a Dart nullable
 - All Dart integer types map to `int`, floats to `double`
 
 ### Command Line
