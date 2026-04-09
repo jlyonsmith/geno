@@ -3,7 +3,7 @@
     major: 0,
     minor: 6,
     patch: 0,
-    build: 18,
+    build: 19,
     tz: "America/Los_Angeles",
   },
   calcVars: {
