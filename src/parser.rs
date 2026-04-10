@@ -4,7 +4,6 @@ use crate::{
     FileResolver, Location, ParserError, Token, TokenKind, Tokenizer,
     ast::{self, Attributes, FieldType},
 };
-use anyhow::anyhow;
 use fallible_iterator::FallibleIterator;
 use std::{
     cell::RefCell,
@@ -27,14 +26,17 @@ impl Parser {
         }
     }
 
-    fn next_token(&self, tokenizer: &mut PeekableTokenizer) -> anyhow::Result<Token> {
+    fn next_token(&self, tokenizer: &mut PeekableTokenizer) -> Result<Token, ParserError> {
         loop {
-            let token = match tokenizer.next()? {
+            let token = match tokenizer
+                .next()
+                .map_err(|e| e.to_parser_error(self.file_path()))?
+            {
                 Some(token) => token,
                 None => {
-                    return Err(anyhow!(ParserError::UnexpectedEndOfFile {
+                    return Err(ParserError::UnexpectedEndOfFile {
                         file_path: self.file_path(),
-                    }));
+                    });
                 }
             };
 
@@ -46,24 +48,31 @@ impl Parser {
         }
     }
 
-    fn peek_token(&self, tokenizer: &mut PeekableTokenizer) -> anyhow::Result<Token> {
+    fn peek_token(&self, tokenizer: &mut PeekableTokenizer) -> Result<Token, ParserError> {
         loop {
-            let token = match tokenizer.peek()? {
+            let token = match tokenizer
+                .peek()
+                .map_err(|e| e.to_parser_error(self.file_path()))?
+            {
                 Some(token) => token.clone(),
                 None => {
-                    return Err(anyhow!(ParserError::UnexpectedEndOfFile {
+                    return Err(ParserError::UnexpectedEndOfFile {
                         file_path: self.file_path(),
-                    }));
+                    });
                 }
             };
 
             if matches!(token.kind, TokenKind::Comment(_)) {
-                tokenizer.next()?;
+                Self::consume_token(tokenizer);
                 continue;
             }
 
             return Ok(token);
         }
+    }
+
+    fn consume_token(tokenizer: &mut PeekableTokenizer) {
+        tokenizer.next().unwrap();
     }
 
     fn file_path(&self) -> PathBuf {
@@ -71,17 +80,26 @@ impl Parser {
     }
 
     /// Parses the schema
-    pub fn parse(&self, file_path: &Path) -> anyhow::Result<ast::Schema> {
-        self.resolver.borrow_mut().push_path(&file_path)?;
-
+    pub fn parse(&self, file_path: &Path) -> Result<ast::Schema, ParserError> {
+        self.resolver
+            .borrow_mut()
+            .push_path(&file_path)
+            .map_err(|e| e.to_parser_error())?;
+        let input = self
+            .resolver
+            .borrow()
+            .read_to_string()
+            .map_err(|e| e.to_parser_error())?;
         let mut schema_attrs: Option<ast::Attributes> = None;
         let mut attrs: Option<ast::Attributes> = None;
-        let input = self.resolver.borrow().read_to_string()?;
         let mut tokenizer = Tokenizer::new(&input).peekable();
         let mut elements: Vec<ast::Element> = vec![];
 
         loop {
-            let token = match tokenizer.peek()? {
+            let token = match tokenizer
+                .peek()
+                .map_err(|e| e.to_parser_error(self.file_path()))?
+            {
                 Some(token) => token,
                 None => {
                     // This is only time having no more tokens is OK
@@ -91,24 +109,24 @@ impl Parser {
 
             match token.kind {
                 TokenKind::Comment(_) => {
-                    tokenizer.next()?;
+                    Self::consume_token(&mut tokenizer);
                 }
                 TokenKind::SchemaAttrOpen => {
                     if schema_attrs.is_some() {
-                        return Err(anyhow!(ParserError::MultipleSchemaAttributes {
+                        return Err(ParserError::MultipleSchemaAttributes {
                             file_path: self.file_path(),
-                            location: token.location
-                        }));
+                            location: token.location,
+                        });
                     }
 
                     schema_attrs = Some(self.parse_attributes(&mut tokenizer)?);
                 }
                 TokenKind::AttrOpen => {
                     if attrs.is_some() {
-                        return Err(anyhow!(ParserError::MultipleAttributes {
+                        return Err(ParserError::MultipleAttributes {
                             file_path: self.file_path(),
-                            location: token.location
-                        }));
+                            location: token.location,
+                        });
                     }
 
                     attrs = Some(self.parse_attributes(&mut tokenizer)?);
@@ -123,10 +141,11 @@ impl Parser {
                     elements.push(self.parse_include(attrs.take(), &mut tokenizer)?);
                 }
                 _ => {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token: token.clone(),
-                    }));
+                    });
                 }
             }
         }
@@ -145,12 +164,12 @@ impl Parser {
     fn parse_attributes(
         &self,
         tokenizer: &mut PeekableTokenizer,
-    ) -> anyhow::Result<ast::Attributes> {
+    ) -> Result<ast::Attributes, ParserError> {
         let mut attrs: Attributes = vec![];
         let mut accept_comma = false;
 
         // Consume the AttrOpen
-        tokenizer.next()?;
+        Self::consume_token(tokenizer);
 
         loop {
             let token = self.peek_token(tokenizer)?;
@@ -158,32 +177,32 @@ impl Parser {
             match token.kind {
                 TokenKind::Comma => {
                     if !accept_comma {
-                        return Err(anyhow!(ParserError::UnexpectedComma {
+                        return Err(ParserError::UnexpectedComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     accept_comma = false;
                 }
                 TokenKind::BracketClose => {
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     break;
                 }
                 TokenKind::Ident(ref name) => {
                     if accept_comma {
-                        return Err(anyhow!(ParserError::MissingComma {
+                        return Err(ParserError::MissingComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
 
                     let value = match self.peek_token(tokenizer)?.kind {
                         TokenKind::Equals => {
-                            tokenizer.next()?;
+                            Self::consume_token(tokenizer);
 
                             match self.next_token(tokenizer)?.kind {
                                 TokenKind::StringLit(s) => ast::MetadataValue::String(s),
@@ -195,10 +214,11 @@ impl Parser {
                                     )?)
                                 }
                                 _ => {
-                                    return Err(anyhow!(ParserError::UnexpectedToken {
+                                    return Err(ParserError::UnexpectedToken {
+                                        token: token.kind.display(),
+                                        location: token.location,
                                         file_path: self.file_path(),
-                                        token
-                                    }));
+                                    });
                                 }
                             }
                         }
@@ -214,10 +234,11 @@ impl Parser {
                     accept_comma = true;
                 }
                 _ => {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token: token.clone()
-                    }));
+                    });
                 }
             }
         }
@@ -340,18 +361,19 @@ impl Parser {
         &self,
         attributes: Option<ast::Attributes>,
         tokenizer: &mut PeekableTokenizer,
-    ) -> anyhow::Result<ast::Element> {
+    ) -> Result<ast::Element, ParserError> {
         // Consume the Include token
-        tokenizer.next()?;
+        Self::consume_token(tokenizer);
 
         let token = self.next_token(tokenizer)?;
         let file_path = match token.kind {
             TokenKind::StringLit(s) => PathBuf::from(s),
             _ => {
-                return Err(anyhow!(ParserError::UnexpectedToken {
+                return Err(ParserError::UnexpectedToken {
+                    token: token.kind.display(),
+                    location: token.location,
                     file_path: self.file_path(),
-                    token
-                }));
+                });
             }
         };
 
@@ -365,9 +387,9 @@ impl Parser {
         &self,
         tokenizer: &mut PeekableTokenizer,
         attributes: Option<ast::Attributes>,
-    ) -> anyhow::Result<ast::Element> {
+    ) -> Result<ast::Element, ParserError> {
         // Consume the Enum token
-        tokenizer.next()?;
+        Self::consume_token(tokenizer);
 
         // Grab the enum identifier
         let token = self.next_token(tokenizer)?;
@@ -378,10 +400,11 @@ impl Parser {
                 location: token.location,
             },
             _ => {
-                return Err(anyhow!(ParserError::UnexpectedToken {
+                return Err(ParserError::UnexpectedToken {
+                    token: token.kind.display(),
+                    location: token.location,
                     file_path: self.file_path(),
-                    token
-                }));
+                });
             }
         };
 
@@ -401,28 +424,31 @@ impl Parser {
                     TokenKind::I64 => ast::IntegerType::I64,
                     TokenKind::U64 => ast::IntegerType::U64,
                     _ => {
-                        return Err(anyhow!(ParserError::UnexpectedToken {
+                        return Err(ParserError::UnexpectedToken {
+                            token: token.kind.display(),
+                            location: token.location,
                             file_path: self.file_path(),
-                            token
-                        }));
+                        });
                     }
                 };
 
                 let token = self.next_token(tokenizer)?;
 
                 if token.kind != TokenKind::BraceOpen {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token
-                    }));
+                    });
                 }
             }
             TokenKind::BraceOpen => {}
             _ => {
-                return Err(anyhow!(ParserError::UnexpectedToken {
+                return Err(ParserError::UnexpectedToken {
+                    token: token.kind.display(),
+                    location: token.location,
                     file_path: self.file_path(),
-                    token: token.clone()
-                }));
+                });
             }
         }
 
@@ -437,33 +463,33 @@ impl Parser {
             match token.kind {
                 TokenKind::AttrOpen => {
                     if variant_attrs.is_some() {
-                        return Err(anyhow!(ParserError::MultipleAttributes {
+                        return Err(ParserError::MultipleAttributes {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
                     variant_attrs = Some(self.parse_attributes(tokenizer)?);
                 }
                 TokenKind::Comma => {
                     if !accept_comma {
-                        return Err(anyhow!(ParserError::UnexpectedComma {
+                        return Err(ParserError::UnexpectedComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     accept_comma = false;
                 }
                 TokenKind::Ident(name) => {
                     if accept_comma {
-                        return Err(anyhow!(ParserError::UnexpectedComma {
+                        return Err(ParserError::UnexpectedComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
 
                     let ident = ast::Ident {
                         name,
@@ -473,10 +499,11 @@ impl Parser {
                     token = self.next_token(tokenizer)?;
 
                     if TokenKind::Equals != token.kind {
-                        return Err(anyhow!(ParserError::UnexpectedToken {
+                        return Err(ParserError::UnexpectedToken {
+                            token: token.kind.display(),
+                            location: token.location,
                             file_path: self.file_path(),
-                            token
-                        }));
+                        });
                     }
 
                     token = self.next_token(tokenizer)?;
@@ -488,21 +515,23 @@ impl Parser {
                         variants.push(variant);
                         accept_comma = true;
                     } else {
-                        return Err(anyhow!(ParserError::UnexpectedToken {
+                        return Err(ParserError::UnexpectedToken {
+                            token: token.kind.display(),
+                            location: token.location,
                             file_path: self.file_path(),
-                            token
-                        }));
+                        });
                     }
                 }
                 TokenKind::BraceClose => {
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     break;
                 }
                 _ => {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token
-                    }));
+                    });
                 }
             }
         }
@@ -519,9 +548,9 @@ impl Parser {
         &self,
         tokenizer: &mut PeekableTokenizer,
         attributes: Option<ast::Attributes>,
-    ) -> anyhow::Result<ast::Element> {
+    ) -> Result<ast::Element, ParserError> {
         // Consume the Struct token
-        tokenizer.next()?;
+        Self::consume_token(tokenizer);
 
         // Grab the struct identifier
         let token = self.next_token(tokenizer)?;
@@ -532,20 +561,22 @@ impl Parser {
                 location: token.location,
             },
             _ => {
-                return Err(anyhow!(ParserError::UnexpectedToken {
+                return Err(ParserError::UnexpectedToken {
+                    token: token.kind.display(),
+                    location: token.location,
                     file_path: self.file_path(),
-                    token
-                }));
+                });
             }
         };
 
         let token = self.next_token(tokenizer)?;
 
         if token.kind != TokenKind::BraceOpen {
-            return Err(anyhow!(ParserError::UnexpectedToken {
+            return Err(ParserError::UnexpectedToken {
+                token: token.kind.display(),
+                location: token.location,
                 file_path: self.file_path(),
-                token
-            }));
+            });
         }
 
         let mut fields: Vec<(ast::Attributes, ast::Ident, ast::FieldType)> = vec![];
@@ -558,33 +589,33 @@ impl Parser {
             match token.kind {
                 TokenKind::AttrOpen => {
                     if field_attrs.is_some() {
-                        return Err(anyhow!(ParserError::MultipleAttributes {
+                        return Err(ParserError::MultipleAttributes {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
                     field_attrs = Some(self.parse_attributes(tokenizer)?);
                 }
                 TokenKind::Comma => {
                     if !accept_comma {
-                        return Err(anyhow!(ParserError::UnexpectedComma {
+                        return Err(ParserError::UnexpectedComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     accept_comma = false;
                 }
                 TokenKind::Ident(name) => {
                     if accept_comma {
-                        return Err(anyhow!(ParserError::UnexpectedComma {
+                        return Err(ParserError::UnexpectedComma {
                             file_path: self.file_path(),
                             location: token.location,
-                        }));
+                        });
                     }
 
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
 
                     let ident = ast::Ident {
                         name,
@@ -594,10 +625,11 @@ impl Parser {
                     let token = self.next_token(tokenizer)?;
 
                     if TokenKind::Colon != token.kind {
-                        return Err(anyhow!(ParserError::UnexpectedToken {
+                        return Err(ParserError::UnexpectedToken {
+                            token: token.kind.display(),
+                            location: token.location,
                             file_path: self.file_path(),
-                            token
-                        }));
+                        });
                     }
 
                     let field_type = self.parse_field_type(tokenizer)?;
@@ -607,14 +639,15 @@ impl Parser {
                     accept_comma = true;
                 }
                 TokenKind::BraceClose => {
-                    tokenizer.next()?;
+                    Self::consume_token(tokenizer);
                     break;
                 }
                 _ => {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token
-                    }));
+                    });
                 }
             }
         }
@@ -626,12 +659,12 @@ impl Parser {
         })
     }
 
-    fn parse_nullable(&self, tokenizer: &mut PeekableTokenizer) -> anyhow::Result<bool> {
+    fn parse_nullable(&self, tokenizer: &mut PeekableTokenizer) -> Result<bool, ParserError> {
         // Check if type is nullable
         let token = self.peek_token(tokenizer)?;
 
         if token.kind == TokenKind::Question {
-            tokenizer.next()?;
+            Self::consume_token(tokenizer);
             Ok(true)
         } else {
             Ok(false)
@@ -641,25 +674,26 @@ impl Parser {
     fn parse_field_type(
         &self,
         tokenizer: &mut PeekableTokenizer,
-    ) -> anyhow::Result<ast::FieldType> {
+    ) -> Result<ast::FieldType, ParserError> {
         let token = self.peek_token(tokenizer)?;
 
         if token.kind == TokenKind::BracketOpen {
-            tokenizer.next()?;
+            Self::consume_token(tokenizer);
 
             let field_type = Box::new(self.parse_field_type(tokenizer)?);
             let size = if self.peek_token(tokenizer)?.kind == TokenKind::Semicolon {
-                tokenizer.next()?;
+                Self::consume_token(tokenizer);
 
                 let token = self.next_token(tokenizer)?;
 
                 if let TokenKind::Integer(s) = token.kind {
                     Some(self.parse_integer_literal(&ast::IntegerType::U32, &s, token.location)?)
                 } else {
-                    return Err(anyhow!(ParserError::UnexpectedToken {
+                    return Err(ParserError::UnexpectedToken {
+                        token: token.kind.display(),
+                        location: token.location,
                         file_path: self.file_path(),
-                        token
-                    }));
+                    });
                 }
             } else {
                 None
@@ -667,27 +701,27 @@ impl Parser {
             let token = self.next_token(tokenizer)?;
 
             if token.kind != TokenKind::BracketClose {
-                return Err(anyhow!(ParserError::MissingBracket {
+                return Err(ParserError::MissingBracket {
                     file_path: self.file_path(),
-                    location: token.location
-                }));
+                    location: token.location,
+                });
             }
 
             let nullable = self.parse_nullable(tokenizer)?;
 
             Ok(ast::FieldType::Array(field_type, size, nullable))
         } else if token.kind == TokenKind::BraceOpen {
-            tokenizer.next()?;
+            Self::consume_token(tokenizer);
 
             let key_type = self.parse_builtin_type(tokenizer)?;
 
             let token = self.next_token(tokenizer)?;
 
             if token.kind != TokenKind::Colon {
-                return Err(anyhow!(ParserError::MissingColon {
+                return Err(ParserError::MissingColon {
                     file_path: self.file_path(),
-                    location: token.location
-                }));
+                    location: token.location,
+                });
             }
 
             let value_type = Box::new(self.parse_field_type(tokenizer)?);
@@ -695,17 +729,17 @@ impl Parser {
             let token = self.next_token(tokenizer)?;
 
             if token.kind != TokenKind::BraceClose {
-                return Err(anyhow!(ParserError::MissingBrace {
+                return Err(ParserError::MissingBrace {
                     file_path: self.file_path(),
-                    location: token.location
-                }));
+                    location: token.location,
+                });
             }
 
             let nullable = self.parse_nullable(tokenizer)?;
 
             Ok(FieldType::Map(key_type, value_type, nullable))
         } else if let TokenKind::Ident(name) = token.kind {
-            tokenizer.next()?;
+            Self::consume_token(tokenizer);
 
             Ok(FieldType::UserDefined(
                 ast::Ident {
@@ -726,7 +760,7 @@ impl Parser {
     fn parse_builtin_type(
         &self,
         tokenizer: &mut PeekableTokenizer,
-    ) -> anyhow::Result<ast::BuiltinType> {
+    ) -> Result<ast::BuiltinType, ParserError> {
         let token = self.next_token(tokenizer)?;
 
         match token.kind {
@@ -742,10 +776,11 @@ impl Parser {
             TokenKind::F64 => Ok(ast::BuiltinType::Float(ast::FloatType::F64)),
             TokenKind::String => Ok(ast::BuiltinType::String),
             TokenKind::Bool => Ok(ast::BuiltinType::Bool),
-            _ => Err(anyhow!(ParserError::UnexpectedToken {
+            _ => Err(ParserError::UnexpectedToken {
+                token: token.kind.display(),
+                location: token.location,
                 file_path: self.file_path(),
-                token
-            })),
+            }),
         }
     }
 }
@@ -805,7 +840,7 @@ mod tests {
                 .get(path)
                 .ok_or(ResolverError::Io(
                     PathBuf::from(path),
-                    std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"),
+                    "file not found".to_string(),
                 ))
                 .map(|s| s.to_string())
         }
@@ -850,12 +885,7 @@ mod tests {
 
         match result {
             Err(err) => {
-                let err = err.downcast_ref::<ParserError>();
-                assert!(err.is_some());
-                assert!(matches!(
-                    err.unwrap(),
-                    ParserError::UnexpectedEndOfFile { .. }
-                ));
+                assert!(matches!(err, ParserError::UnexpectedEndOfFile { .. }));
             }
             _ => {
                 panic!("expected an error");
@@ -869,9 +899,7 @@ mod tests {
             .parse(&Path::new("number_range.geno"));
 
         match result {
-            Err(err) => {
-                assert!(err.downcast_ref::<ParserError>().is_some());
-            }
+            Err(_) => {}
             _ => {
                 panic!("expected an error");
             }

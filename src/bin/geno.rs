@@ -44,6 +44,11 @@ fn main() {
         Ok(code) => exit(code),
         Err(err) => {
             eprintln!("error: {}", err);
+            let mut source = err.source();
+            while let Some(e) = source {
+                eprintln!("caused by: {}", e);
+                source = e.source();
+            }
             exit(1);
         }
     }

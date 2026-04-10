@@ -2,12 +2,13 @@
 
 use crate::Location;
 use fallible_iterator::FallibleIterator;
-use std::{error::Error, fmt};
+use thiserror::Error;
 
 /// Error produced by the tokenizer.
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 pub enum TokenizeError {
     /// An unexpected character was encountered.
+    #[error("unexpected character '{ch}' ({location})")]
     UnexpectedChar {
         /// The unexpected character.
         ch: char,
@@ -15,35 +16,21 @@ pub enum TokenizeError {
         location: Location,
     },
     /// A string literal was never closed.
+    #[error("unterminated string literal ({location})")]
     UnterminatedString {
         /// Where the string opened.
         location: Location,
     },
     /// A numeric literal was malformed (e.g. `0b` with no digits).
+    #[error("invalid number literal ({location})")]
     InvalidNumber {
         /// Where the number started.
         location: Location,
     },
 }
 
-impl fmt::Display for TokenizeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::UnexpectedChar { ch, location } => {
-                write!(f, "unexpected character '{ch}' ({location})")
-            }
-            Self::UnterminatedString { location } => {
-                write!(f, "unterminated string literal ({location})")
-            }
-            Self::InvalidNumber { location } => write!(f, "invalid number literal ({location})"),
-        }
-    }
-}
-
-impl Error for TokenizeError {}
-
 /// Every distinct token kind in the Geno language.
-#[derive(strum::Display, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     /// `include`
     Include,
@@ -104,12 +91,48 @@ pub enum TokenKind {
     Integer(String),
     /// A string literal with the surrounding quotes removed and escape sequences resolved.
     StringLit(String),
-
     /// A `//` line comment; the inner text is trimmed of leading/trailing whitespace.
     Comment(String),
-
     /// Any non-keyword identifier.
     Ident(String),
+}
+
+impl TokenKind {
+    /// Returns a string representation of this token kind suitable for display purposes.
+    pub fn display(&self) -> String {
+        match self {
+            Self::Include => "include".to_string(),
+            Self::Enum => "enum".to_string(),
+            Self::Struct => "struct".to_string(),
+            Self::I8 => "i8".to_string(),
+            Self::U8 => "u8".to_string(),
+            Self::I16 => "i16".to_string(),
+            Self::U16 => "u16".to_string(),
+            Self::I32 => "i32".to_string(),
+            Self::U32 => "u32".to_string(),
+            Self::I64 => "i64".to_string(),
+            Self::U64 => "u64".to_string(),
+            Self::F32 => "f32".to_string(),
+            Self::F64 => "f64".to_string(),
+            Self::String => "string".to_string(),
+            Self::Bool => "bool".to_string(),
+            Self::SchemaAttrOpen => "#![".to_string(),
+            Self::AttrOpen => "#[".to_string(),
+            Self::BraceOpen => "{".to_string(),
+            Self::BraceClose => "}".to_string(),
+            Self::BracketOpen => "[".to_string(),
+            Self::BracketClose => "]".to_string(),
+            Self::Comma => ",".to_string(),
+            Self::Colon => ":".to_string(),
+            Self::Equals => "=".to_string(),
+            Self::Semicolon => ";".to_string(),
+            Self::Question => "?".to_string(),
+            Self::Integer(s) => format!("{}", s),
+            Self::StringLit(s) => format!("{}", s),
+            Self::Comment(s) => format!("{}", s),
+            Self::Ident(s) => s.to_string(),
+        }
+    }
 }
 
 /// A token together with its position in the source.

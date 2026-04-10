@@ -18,31 +18,24 @@ pub trait FileResolver {
 }
 
 /// Error type for file resolver operations.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ResolverError {
     /// A duplicate include path was encountered.
     DuplicateInclude(PathBuf),
     /// An IO error occurred.
-    Io(PathBuf, std::io::Error),
+    Io(PathBuf, String),
 }
 
 impl fmt::Display for ResolverError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Io(p, e) => write!(f, "resolver i/o failure '{}': {}", p.display(), e),
-            Self::DuplicateInclude(p) => write!(f, "Duplicate include: {}", p.display()),
+            Self::Io(p, e) => write!(f, "i/o failure '{}': {}", p.display(), e),
+            Self::DuplicateInclude(p) => write!(f, "duplicate include '{}'", p.display()),
         }
     }
 }
 
-impl Error for ResolverError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Io(_, e) => Some(e), // Return the underlying IO error
-            Self::DuplicateInclude(_) => None,
-        }
-    }
-}
+impl Error for ResolverError {}
 
 /// A standard file resolver that uses a [`HashSet`] to track included files.
 pub struct StandardFileResolver {
@@ -59,8 +52,8 @@ impl StandardFileResolver {
 impl FileResolver for StandardFileResolver {
     fn push_path(&mut self, path: &Path) -> Result<(), ResolverError> {
         let mut full_path = if self.files.len() == 0 {
-            let current_dir =
-                std::env::current_dir().map_err(|e| ResolverError::Io(path.to_path_buf(), e))?;
+            let current_dir = std::env::current_dir()
+                .map_err(|e| ResolverError::Io(path.to_path_buf(), e.to_string()))?;
 
             current_dir.join(path)
         } else {
@@ -90,7 +83,7 @@ impl FileResolver for StandardFileResolver {
 
         match std::fs::read_to_string(file_path) {
             Ok(contents) => Ok(contents),
-            Err(e) => Err(ResolverError::Io(file_path.to_path_buf(), e)),
+            Err(e) => Err(ResolverError::Io(file_path.to_path_buf(), e.to_string())),
         }
     }
 }
