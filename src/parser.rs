@@ -379,7 +379,14 @@ impl Parser {
 
         Ok(ast::Element::Include {
             attributes: attributes.unwrap_or(vec![]),
-            schema: Parser::new(self.resolver.clone()).parse(&file_path)?.into(),
+            schema: Parser::new(self.resolver.clone())
+                .parse(&file_path)
+                .map_err(|e| ParserError::Include {
+                    error: e.into(),
+                    location: token.location,
+                    file_path: file_path.clone(),
+                })?
+                .into(),
         })
     }
 

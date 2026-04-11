@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 /// Error produced by the parser.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum ParserError {
     /// Tokenizer error
     #[error("tokenizer error ({file_path}:{location})")]
-    TokenizerError {
+    Tokenize {
         /// The tokenizer error
         #[source]
         error: TokenizeError,
@@ -18,11 +18,22 @@ pub enum ParserError {
     },
     /// Resolver error
     #[error("unable to resolve file ({file_path})")]
-    ResolverError {
+    Resolve {
         /// The resolver error
         #[source]
         error: ResolverError,
         /// The path to the file being resolved
+        file_path: PathBuf,
+    },
+    /// Include error
+    #[error("bad include ({file_path}:{location})")]
+    Include {
+        /// The underlying resolver error
+        #[source]
+        error: Box<ParserError>,
+        /// [Location] of the include error
+        location: Location,
+        /// The path to the source file containing the error
         file_path: PathBuf,
     },
     /// Unexpected token
@@ -218,17 +229,17 @@ impl TokenizeError {
     /// Converts a [TokenizeError] into a [ParseError]
     pub fn to_parser_error(&self, file_path: PathBuf) -> ParserError {
         match self {
-            TokenizeError::UnexpectedChar { location, .. } => ParserError::TokenizerError {
+            TokenizeError::UnexpectedChar { location, .. } => ParserError::Tokenize {
                 error: self.clone(),
                 location: *location,
                 file_path,
             },
-            TokenizeError::UnterminatedString { location, .. } => ParserError::TokenizerError {
+            TokenizeError::UnterminatedString { location, .. } => ParserError::Tokenize {
                 error: self.clone(),
                 location: *location,
                 file_path,
             },
-            TokenizeError::InvalidNumber { location, .. } => ParserError::TokenizerError {
+            TokenizeError::InvalidNumber { location, .. } => ParserError::Tokenize {
                 error: self.clone(),
                 location: *location,
                 file_path,
@@ -241,11 +252,11 @@ impl ResolverError {
     /// Converts a [ResolverError] into a [ParseError]
     pub fn to_parser_error(&self) -> ParserError {
         match self {
-            Self::Io(file_path, _) => ParserError::ResolverError {
+            Self::Io(file_path, _) => ParserError::Resolve {
                 error: self.clone(),
                 file_path: file_path.clone(),
             },
-            Self::DuplicateInclude(file_path) => ParserError::ResolverError {
+            Self::DuplicateInclude(file_path) => ParserError::Resolve {
                 error: self.clone(),
                 file_path: file_path.clone(),
             },
