@@ -1,6 +1,7 @@
 use crate::{Location, ParserError, case};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Eq, collections::HashSet, hash::Hash, path::PathBuf};
+use topo_sort::TopoSort;
 
 /// Identifier type
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -169,9 +170,10 @@ impl Schema {
     /// Validate the schema and all nested schemas
     pub fn validate(&self) -> Result<(), ParserError> {
         let mut type_names = HashSet::<String>::new();
+        let mut topo_sort = TopoSort::<String>::new();
 
         self.first_pass_validate(&mut type_names)?;
-        self.second_pass_validate(&type_names)?;
+        self.second_pass_validate(&type_names, &mut topo_sort)?;
 
         Ok(())
     }
@@ -308,20 +310,37 @@ impl Schema {
         Ok(())
     }
 
-    fn second_pass_validate(&self, type_names: &HashSet<String>) -> Result<(), ParserError> {
+    fn second_pass_validate(
+        &self,
+        type_names: &HashSet<String>,
+        topo_sort: &mut TopoSort<String>,
+    ) -> Result<(), ParserError> {
         // Check for undefined types in structs
         for element in &self.elements {
             match element {
-                Element::Struct { fields, .. } => {
-                    for (_, _, field_type) in fields {
+                Element::Struct {
+                    fields,
+                    ident: struct_ident,
+                    ..
+                } => {
+                    for (_, ident, field_type) in fields {
                         self.check_for_undefined_types(field_type, &type_names)?;
+
+                        if self.has_struct_cycle(struct_ident.name.as_str(), field_type, topo_sort)
+                        {
+                            return Err(ParserError::StructCycle {
+                                field: ident.name.clone(),
+                                location: ident.location.clone(),
+                                file_path: self.file_path.clone(),
+                            });
+                        }
                     }
                 }
                 Element::Include {
                     attributes: _,
                     schema,
                 } => {
-                    schema.second_pass_validate(type_names)?;
+                    schema.second_pass_validate(type_names, topo_sort)?;
                 }
                 _ => {}
             }
@@ -391,6 +410,31 @@ impl Schema {
             FieldType::Builtin(_, _) => {}
         }
         Ok(())
+    }
+
+    fn has_struct_cycle(
+        &self,
+        parent_name: &str,
+        field_type: &FieldType,
+        topo_sort: &mut TopoSort<String>,
+    ) -> bool {
+        match field_type {
+            FieldType::Array(array_type, _, nullable) => {
+                !nullable && self.has_struct_cycle(parent_name, array_type, topo_sort)
+            }
+            FieldType::Map(_, value_type, nullable) => {
+                !nullable && self.has_struct_cycle(parent_name, value_type, topo_sort)
+            }
+            FieldType::UserDefined(ident, nullable) => {
+                if !nullable {
+                    topo_sort.insert_from_slice(parent_name.to_string(), &[ident.name.clone()]);
+                    topo_sort.cycle_detected()
+                } else {
+                    false
+                }
+            }
+            FieldType::Builtin(_, _) => false,
+        }
     }
 
     /// Flattens all nested AST elementarations

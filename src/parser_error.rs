@@ -46,6 +46,17 @@ pub enum ParserError {
         /// The path to the source file containing the error
         file_path: PathBuf,
     },
+    /// Struct cycle
+    #[error("struct cycle detected; use a nullable type ({file_path}:{location})")]
+    StructCycle {
+        /// The field name that caused the cycle
+        field: String,
+        /// [Location] of the parse error
+        location: Location,
+        /// The path to the source file containing the error
+        file_path: PathBuf,
+    },
+
     /// Unexpected end-of-file
     #[error("unexpected end of file ({file_path})")]
     UnexpectedEndOfFile {
