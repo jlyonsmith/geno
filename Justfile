@@ -59,8 +59,8 @@ release OPERATION='incrPatch':
 
   mkdir scratch 2> /dev/null
 
-  if not stampver {{OPERATION}} -u -i version.json5
-    error "Unable to generation version information"
+  if not stampver -u {{OPERATION}}
+    error "Unable to generate version information"
     exit 1
   end
 
@@ -106,7 +106,7 @@ release OPERATION='incrPatch':
   info "Finished release of '"$name"' on branch '"$branch"'. You can publish the crate."
   exit 0
 
-del-tag:
+del-last-tag:
   #!/usr/bin/env fish
   set tagName (cat "scratch/version.tag.txt")
 
