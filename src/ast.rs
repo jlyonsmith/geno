@@ -100,13 +100,22 @@ pub enum BuiltinType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FieldType {
     /// Array type
-    Array(Box<FieldType>, Option<IntegerValue>, bool),
+    Array(Box<NullableFieldType>, Option<IntegerValue>),
     /// Map type
-    Map(BuiltinType, Box<FieldType>, bool),
+    Map(BuiltinType, Box<NullableFieldType>),
     /// Builtin type
-    Builtin(BuiltinType, bool),
+    Builtin(BuiltinType),
     /// User-defined type
-    UserDefined(Ident, bool),
+    UserDefined(Ident),
+}
+
+/// Nullable field type
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NullableFieldType {
+    /// The underlying field type
+    pub field_type: FieldType,
+    /// Whether the field is nullable
+    pub nullable: bool,
 }
 
 /// Enum representing metadata values
@@ -141,7 +150,7 @@ pub enum Element {
         /// Struct identifier
         ident: Ident,
         /// Struct fields
-        fields: Vec<(Attributes, Ident, FieldType)>,
+        fields: Vec<(Attributes, Ident, NullableFieldType)>,
     },
     /// Include directive
     Include {
@@ -388,11 +397,14 @@ impl Schema {
 
     fn check_for_undefined_types(
         &self,
-        field_type: &FieldType,
+        field_type: &NullableFieldType,
         type_names: &HashSet<String>,
     ) -> Result<(), ParserError> {
         match field_type {
-            FieldType::UserDefined(ident, _) => {
+            NullableFieldType {
+                field_type: FieldType::UserDefined(ident),
+                ..
+            } => {
                 if !type_names.contains(ident.as_str()) {
                     return Err(ParserError::UndefinedType {
                         name: ident.as_str().to_string(),
@@ -401,13 +413,22 @@ impl Schema {
                     });
                 }
             }
-            FieldType::Array(inner, _, _) => {
+            NullableFieldType {
+                field_type: FieldType::Array(inner, _),
+                ..
+            } => {
                 self.check_for_undefined_types(inner, type_names)?;
             }
-            FieldType::Map(_, value_type, _) => {
+            NullableFieldType {
+                field_type: FieldType::Map(_, value_type),
+                ..
+            } => {
                 self.check_for_undefined_types(value_type, type_names)?;
             }
-            FieldType::Builtin(_, _) => {}
+            NullableFieldType {
+                field_type: FieldType::Builtin(_),
+                ..
+            } => {}
         }
         Ok(())
     }
@@ -415,17 +436,22 @@ impl Schema {
     fn has_struct_cycle(
         &self,
         parent_name: &str,
-        field_type: &FieldType,
+        field_type: &NullableFieldType,
         topo_sort: &mut TopoSort<String>,
     ) -> bool {
         match field_type {
-            FieldType::Array(array_type, _, nullable) => {
-                !nullable && self.has_struct_cycle(parent_name, array_type, topo_sort)
-            }
-            FieldType::Map(_, value_type, nullable) => {
-                !nullable && self.has_struct_cycle(parent_name, value_type, topo_sort)
-            }
-            FieldType::UserDefined(ident, nullable) => {
+            NullableFieldType {
+                field_type: FieldType::Array(array_type, _),
+                nullable,
+            } => !nullable && self.has_struct_cycle(parent_name, array_type, topo_sort),
+            NullableFieldType {
+                field_type: FieldType::Map(_, value_type),
+                nullable,
+            } => !nullable && self.has_struct_cycle(parent_name, value_type, topo_sort),
+            NullableFieldType {
+                field_type: FieldType::UserDefined(ident),
+                nullable,
+            } => {
                 if !nullable {
                     topo_sort.insert_from_slice(parent_name.to_string(), &[ident.name.clone()]);
                     topo_sort.cycle_detected()
@@ -433,7 +459,10 @@ impl Schema {
                     false
                 }
             }
-            FieldType::Builtin(_, _) => false,
+            NullableFieldType {
+                field_type: FieldType::Builtin(_),
+                ..
+            } => false,
         }
     }
 

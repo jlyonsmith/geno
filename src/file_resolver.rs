@@ -51,13 +51,18 @@ impl StandardFileResolver {
 
 impl FileResolver for StandardFileResolver {
     fn push_path(&mut self, path: &Path) -> Result<(), ResolverError> {
-        let mut full_path = if self.files.len() == 0 {
-            let current_dir = std::env::current_dir()
-                .map_err(|e| ResolverError::Io(path.to_path_buf(), e.to_string()))?;
+        let mut full_path = if path.is_relative() {
+            // If this is the first path, resolve it relative to the current directory
+            if self.files.len() == 0 {
+                let current_dir = std::env::current_dir()
+                    .map_err(|e| ResolverError::Io(path.to_path_buf(), e.to_string()))?;
 
-            current_dir.join(path)
+                current_dir.join(path)
+            } else {
+                self.current_path().unwrap().parent().unwrap().join(path)
+            }
         } else {
-            self.current_path().unwrap().parent().unwrap().join(path)
+            path.to_path_buf()
         };
 
         full_path = path_clean::clean(full_path);

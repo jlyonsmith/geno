@@ -113,7 +113,7 @@ fn generate_enum(
 fn generate_struct(
     out: &mut String,
     ident: &ast::Ident,
-    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
+    fields: &[(ast::Attributes, ast::Ident, ast::NullableFieldType)],
 ) {
     let dart_name = case::to_pascal(ident.as_str());
 
@@ -134,7 +134,7 @@ fn generate_struct(
     writeln!(out, "  {dart_name}({{").unwrap();
     for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(&field_ident.as_str());
-        if is_nullable(field_type) {
+        if field_type.nullable {
             writeln!(out, "    this.{dart_field},").unwrap();
         } else {
             writeln!(out, "    required this.{dart_field},").unwrap();
@@ -157,13 +157,19 @@ fn generate_struct(
     writeln!(out, "}}").unwrap();
 }
 
-fn field_type_str(ft: &ast::FieldType) -> String {
+fn field_type_str(ft: &ast::NullableFieldType) -> String {
     match ft {
-        ast::FieldType::Builtin(bt, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
             let base = builtin_type_str(bt);
             if *nullable { format!("{base}?") } else { base }
         }
-        ast::FieldType::UserDefined(ident, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
             let dart_name = case::to_pascal(ident.as_str());
             if *nullable {
                 format!("{dart_name}?")
@@ -171,12 +177,18 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 dart_name
             }
         }
-        ast::FieldType::Array(inner, _length, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(inner, _length),
+            nullable,
+        } => {
             let inner_str = field_type_str(inner);
             let base = format!("List<{inner_str}>");
             if *nullable { format!("{base}?") } else { base }
         }
-        ast::FieldType::Map(key_type, value_type, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(key_type, value_type),
+            nullable,
+        } => {
             let key_str = builtin_type_str(key_type);
             let value_str = field_type_str(value_type);
             let base = format!("Map<{key_str}, {value_str}>");
@@ -191,15 +203,6 @@ fn builtin_type_str(bt: &ast::BuiltinType) -> String {
         ast::BuiltinType::Float(_) => "double".to_string(),
         ast::BuiltinType::String => "String".to_string(),
         ast::BuiltinType::Bool => "bool".to_string(),
-    }
-}
-
-fn is_nullable(ft: &ast::FieldType) -> bool {
-    match ft {
-        ast::FieldType::Builtin(_, nullable) => *nullable,
-        ast::FieldType::UserDefined(_, nullable) => *nullable,
-        ast::FieldType::Array(_, _, nullable) => *nullable,
-        ast::FieldType::Map(_, _, nullable) => *nullable,
     }
 }
 

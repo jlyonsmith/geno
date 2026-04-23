@@ -2,7 +2,7 @@
 
 use crate::{
     FileResolver, Location, ParserError, Token, TokenKind, Tokenizer,
-    ast::{self, Attributes, FieldType},
+    ast::{self, Attributes, FieldType, NullableFieldType},
 };
 use fallible_iterator::FallibleIterator;
 use std::{
@@ -586,7 +586,7 @@ impl Parser {
             });
         }
 
-        let mut fields: Vec<(ast::Attributes, ast::Ident, ast::FieldType)> = vec![];
+        let mut fields: Vec<(ast::Attributes, ast::Ident, ast::NullableFieldType)> = vec![];
         let mut field_attrs: Option<ast::Attributes> = None;
         let mut accept_comma = false;
 
@@ -639,7 +639,7 @@ impl Parser {
                         });
                     }
 
-                    let field_type = self.parse_field_type(tokenizer)?;
+                    let field_type = self.parse_nullable_field_type(tokenizer)?;
 
                     fields.push((field_attrs.take().unwrap_or(vec![]), ident, field_type));
 
@@ -678,16 +678,16 @@ impl Parser {
         }
     }
 
-    fn parse_field_type(
+    fn parse_nullable_field_type(
         &self,
         tokenizer: &mut PeekableTokenizer,
-    ) -> Result<ast::FieldType, ParserError> {
+    ) -> Result<ast::NullableFieldType, ParserError> {
         let token = self.peek_token(tokenizer)?;
 
         if token.kind == TokenKind::BracketOpen {
             Self::consume_token(tokenizer);
 
-            let field_type = Box::new(self.parse_field_type(tokenizer)?);
+            let field_type = Box::new(self.parse_nullable_field_type(tokenizer)?);
             let size = if self.peek_token(tokenizer)?.kind == TokenKind::Semicolon {
                 Self::consume_token(tokenizer);
 
@@ -716,7 +716,10 @@ impl Parser {
 
             let nullable = self.parse_nullable(tokenizer)?;
 
-            Ok(ast::FieldType::Array(field_type, size, nullable))
+            Ok(NullableFieldType {
+                field_type: ast::FieldType::Array(field_type, size),
+                nullable,
+            })
         } else if token.kind == TokenKind::BraceOpen {
             Self::consume_token(tokenizer);
 
@@ -731,7 +734,7 @@ impl Parser {
                 });
             }
 
-            let value_type = Box::new(self.parse_field_type(tokenizer)?);
+            let value_type = Box::new(self.parse_nullable_field_type(tokenizer)?);
 
             let token = self.next_token(tokenizer)?;
 
@@ -744,23 +747,26 @@ impl Parser {
 
             let nullable = self.parse_nullable(tokenizer)?;
 
-            Ok(FieldType::Map(key_type, value_type, nullable))
+            Ok(NullableFieldType {
+                field_type: FieldType::Map(key_type, value_type),
+                nullable,
+            })
         } else if let TokenKind::Ident(name) = token.kind {
             Self::consume_token(tokenizer);
 
-            Ok(FieldType::UserDefined(
-                ast::Ident {
+            Ok(NullableFieldType {
+                field_type: FieldType::UserDefined(ast::Ident {
                     name,
                     location: token.location,
-                },
-                self.parse_nullable(tokenizer)?,
-            ))
+                }),
+                nullable: self.parse_nullable(tokenizer)?,
+            })
         } else {
             // Builtin
-            Ok(FieldType::Builtin(
-                self.parse_builtin_type(tokenizer)?,
-                self.parse_nullable(tokenizer)?,
-            ))
+            Ok(NullableFieldType {
+                field_type: FieldType::Builtin(self.parse_builtin_type(tokenizer)?),
+                nullable: self.parse_nullable(tokenizer)?,
+            })
         }
     }
 

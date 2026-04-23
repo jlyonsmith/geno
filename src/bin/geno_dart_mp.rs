@@ -172,7 +172,7 @@ fn generate_enum(
 fn generate_struct(
     out: &mut String,
     ident: &ast::Ident,
-    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
+    fields: &[(ast::Attributes, ast::Ident, ast::NullableFieldType)],
     enum_names: &HashSet<&str>,
 ) {
     let dart_name = case::to_pascal(ident.as_str());
@@ -190,7 +190,7 @@ fn generate_struct(
     writeln!(out, "  {dart_name}({{").unwrap();
     for (_, field_ident, field_type) in fields {
         let dart_field = case::to_camel(field_ident.as_str());
-        if is_nullable(field_type) {
+        if field_type.nullable {
             writeln!(out, "    this.{dart_field},").unwrap();
         } else {
             writeln!(out, "    required this.{dart_field},").unwrap();
@@ -250,14 +250,18 @@ fn generate_struct(
 fn generate_pack_field(
     out: &mut String,
     expr: &str,
-    ft: &ast::FieldType,
+    field_type: &ast::NullableFieldType,
     indent: &str,
     enum_names: &HashSet<&str>,
     depth: usize,
 ) {
-    match ft {
-        ast::FieldType::Builtin(bt, nullable) => {
+    match field_type {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
             let method = builtin_pack_method(bt);
+
             if *nullable {
                 writeln!(out, "{indent}if ({expr} != null) {{").unwrap();
                 writeln!(out, "{indent}  p.{method}({expr}!);").unwrap();
@@ -268,7 +272,10 @@ fn generate_pack_field(
                 writeln!(out, "{indent}p.{method}({expr});").unwrap();
             }
         }
-        ast::FieldType::UserDefined(ident, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
             let is_enum = enum_names.contains(ident.as_str());
             if *nullable {
                 writeln!(out, "{indent}if ({expr} != null) {{").unwrap();
@@ -283,7 +290,10 @@ fn generate_pack_field(
                 writeln!(out, "{indent}{expr}._pack(p);").unwrap();
             }
         }
-        ast::FieldType::Array(inner, _, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(inner, _),
+            nullable,
+        } => {
             let var = format!("e{depth}");
             let src = if *nullable {
                 format!("{expr}!")
@@ -321,7 +331,10 @@ fn generate_pack_field(
                 writeln!(out, "{indent}}}").unwrap();
             }
         }
-        ast::FieldType::Map(key_type, value_type, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(key_type, value_type),
+            nullable,
+        } => {
             let var = format!("e{depth}");
             let key_method = builtin_pack_method(key_type);
             let src = if *nullable {
@@ -365,9 +378,12 @@ fn generate_pack_field(
     }
 }
 
-fn generate_unpack_expr(ft: &ast::FieldType, enum_names: &HashSet<&str>) -> String {
-    match ft {
-        ast::FieldType::Builtin(bt, nullable) => {
+fn generate_unpack_expr(field_type: &ast::NullableFieldType, enum_names: &HashSet<&str>) -> String {
+    match field_type {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
             let method = builtin_unpack_method(bt);
             if *nullable {
                 format!("u.{method}()")
@@ -375,7 +391,10 @@ fn generate_unpack_expr(ft: &ast::FieldType, enum_names: &HashSet<&str>) -> Stri
                 format!("u.{method}()!")
             }
         }
-        ast::FieldType::UserDefined(ident, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
             let dart_name = case::to_pascal(ident.as_str());
             if *nullable {
                 format!("{dart_name}._unpackNullable(u)")
@@ -383,7 +402,10 @@ fn generate_unpack_expr(ft: &ast::FieldType, enum_names: &HashSet<&str>) -> Stri
                 format!("{dart_name}._unpack(u)")
             }
         }
-        ast::FieldType::Array(inner, _, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(inner, _),
+            nullable,
+        } => {
             let inner_expr = generate_unpack_expr(inner, enum_names);
             let base = format!("List.generate(u.unpackListLength(), (_) => {inner_expr})");
             if *nullable {
@@ -392,7 +414,10 @@ fn generate_unpack_expr(ft: &ast::FieldType, enum_names: &HashSet<&str>) -> Stri
                 base
             }
         }
-        ast::FieldType::Map(key_type, value_type, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(key_type, value_type),
+            nullable,
+        } => {
             let key_method = builtin_unpack_method(key_type);
             let value_expr = generate_unpack_expr(value_type, enum_names);
             let base = format!(
@@ -407,22 +432,19 @@ fn generate_unpack_expr(ft: &ast::FieldType, enum_names: &HashSet<&str>) -> Stri
     }
 }
 
-fn is_nullable(ft: &ast::FieldType) -> bool {
+fn field_type_str(ft: &ast::NullableFieldType) -> String {
     match ft {
-        ast::FieldType::Builtin(_, nullable) => *nullable,
-        ast::FieldType::UserDefined(_, nullable) => *nullable,
-        ast::FieldType::Array(_, _, nullable) => *nullable,
-        ast::FieldType::Map(_, _, nullable) => *nullable,
-    }
-}
-
-fn field_type_str(ft: &ast::FieldType) -> String {
-    match ft {
-        ast::FieldType::Builtin(bt, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
             let base = builtin_type_str(bt);
             if *nullable { format!("{base}?") } else { base }
         }
-        ast::FieldType::UserDefined(ident, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
             let dart_name = case::to_pascal(ident.as_str());
             if *nullable {
                 format!("{dart_name}?")
@@ -430,12 +452,18 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 dart_name
             }
         }
-        ast::FieldType::Array(inner, _length, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(inner, _length),
+            nullable,
+        } => {
             let inner_str = field_type_str(inner);
             let base = format!("List<{inner_str}>");
             if *nullable { format!("{base}?") } else { base }
         }
-        ast::FieldType::Map(key_type, value_type, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(key_type, value_type),
+            nullable,
+        } => {
             let key_str = builtin_type_str(key_type);
             let value_str = field_type_str(value_type);
             let base = format!("Map<{key_str}, {value_str}>");

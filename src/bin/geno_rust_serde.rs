@@ -128,7 +128,7 @@ fn generate_enum(
 fn generate_struct(
     out: &mut String,
     ident: &ast::Ident,
-    fields: &[(ast::Attributes, ast::Ident, ast::FieldType)],
+    fields: &[(ast::Attributes, ast::Ident, ast::NullableFieldType)],
 ) {
     let rust_name = case::to_pascal(ident.as_str());
 
@@ -150,9 +150,12 @@ fn generate_struct(
     writeln!(out, "}}").unwrap();
 }
 
-fn field_type_str(ft: &ast::FieldType) -> String {
-    match ft {
-        ast::FieldType::Builtin(bt, nullable) => {
+fn field_type_str(field_type: &ast::NullableFieldType) -> String {
+    match field_type {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
             let base = builtin_type_str(bt);
             if *nullable {
                 format!("Option<{base}>")
@@ -160,7 +163,10 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 base
             }
         }
-        ast::FieldType::UserDefined(ident, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
             let rust_name = case::to_pascal(ident.as_str());
 
             if *nullable {
@@ -169,7 +175,10 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 rust_name
             }
         }
-        ast::FieldType::Array(inner, length, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(inner, length),
+            nullable,
+        } => {
             let inner_str = field_type_str(inner);
             let base = match length {
                 Some(len) => format!("[{inner_str}; {0}]", integer_value_str(len)),
@@ -181,7 +190,10 @@ fn field_type_str(ft: &ast::FieldType) -> String {
                 base
             }
         }
-        ast::FieldType::Map(key_type, value_type, nullable) => {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(key_type, value_type),
+            nullable,
+        } => {
             let key_str = builtin_type_str(key_type);
             let value_str = field_type_str(value_type);
             let base = format!("HashMap<{key_str}, {value_str}>");
