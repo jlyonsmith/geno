@@ -128,11 +128,10 @@ fn generate_dart_json() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("enum "));
     assert!(stdout.contains("class "));
-    assert!(stdout.contains("fromJson"));
-    assert!(stdout.contains("toJson"));
-    assert!(stdout.contains("@JsonSerializable()"));
-    assert!(stdout.contains("@JsonEnum(valueField: 'value')"));
-    assert!(stdout.contains("import 'package:json_annotation/json_annotation.dart'"));
+    assert!(stdout.contains("fromMap"));
+    assert!(stdout.contains("toMap"));
+    assert!(stdout.contains("encode"));
+    assert!(stdout.contains("decode"));
 }
 
 #[test]

@@ -42,5 +42,6 @@ struct Type1 {  // Comments can go here
 	m1: { i32 : f64 },
 	m2: { string : string },
 	m3: { string : bool },
+	m4: { string : bool }?,
 	t1: Type1?, // Nullable nested type
 }
