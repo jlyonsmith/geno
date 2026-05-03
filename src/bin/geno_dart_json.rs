@@ -19,7 +19,7 @@ use std::io::{self, Read};
     long_about = "Generates Dart code with static encode/decode methods using dart:convert."
 )]
 struct Cli {
-    // No CLI arguments needed since we no longer use build_runner
+    // No CLI arguments at the moment
 }
 
 fn main() {
@@ -448,13 +448,21 @@ fn field_default_value(field_type: &ast::NullableFieldType, enum_names: &HashSet
             }
         }
         ast::NullableFieldType {
-            field_type: ast::FieldType::Array(..),
+            field_type: ast::FieldType::Array(array_item_type, fixed_length),
             nullable,
         } => {
             if *nullable {
                 "null".to_string()
             } else {
-                format!("[]")
+                if let Some(fixed_length) = fixed_length {
+                    format!(
+                        "List.filled({}, {})",
+                        integer_value_str(fixed_length),
+                        field_default_value(array_item_type, enum_names)
+                    )
+                } else {
+                    format!("[]")
+                }
             }
         }
         ast::NullableFieldType {
