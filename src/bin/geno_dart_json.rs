@@ -133,6 +133,18 @@ fn generate_struct(
     }
     writeln!(out, "  }});").unwrap();
 
+    // default method
+    writeln!(out).unwrap();
+    writeln!(out, "  static {dart_name} defaultValue() {{").unwrap();
+    writeln!(out, "    return {dart_name}(").unwrap();
+    for (_, field_ident, field_type) in fields {
+        let dart_field = case::to_camel(&field_ident.as_str());
+        let default_value = field_default_value(field_type, enum_names);
+        writeln!(out, "      {dart_field}: {default_value},").unwrap();
+    }
+    writeln!(out, "    );").unwrap();
+    writeln!(out, "  }}").unwrap();
+
     // toMap method
     writeln!(out).unwrap();
     writeln!(
@@ -393,6 +405,66 @@ fn field_value_from_map(
                 format!(
                     "Map<{key_type_str}, {value_type_str}>.fromEntries(({json_key} as Map<String, dynamic>).entries.map((entry) => MapEntry({key_cast}, {value_decode})))"
                 )
+            }
+        }
+    }
+}
+
+fn field_default_value(field_type: &ast::NullableFieldType, enum_names: &HashSet<&str>) -> String {
+    match field_type {
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Builtin(bt),
+            nullable,
+        } => {
+            if *nullable {
+                "null".to_string()
+            } else {
+                match bt {
+                    ast::BuiltinType::Integer(_) => "0",
+                    ast::BuiltinType::Float(_) => "0.0",
+                    ast::BuiltinType::String => "''",
+                    ast::BuiltinType::Bool => "false",
+                }
+                .to_string()
+            }
+        }
+        ast::NullableFieldType {
+            field_type: ast::FieldType::UserDefined(ident),
+            nullable,
+        } => {
+            let dart_name = case::to_pascal(ident.as_str());
+            if enum_names.contains(ident.as_str()) {
+                if *nullable {
+                    "null".to_string()
+                } else {
+                    format!("{dart_name}.values.first")
+                }
+            } else {
+                if *nullable {
+                    "null".to_string()
+                } else {
+                    format!("{dart_name}.default()")
+                }
+            }
+        }
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Array(..),
+            nullable,
+        } => {
+            if *nullable {
+                "null".to_string()
+            } else {
+                format!("[]")
+            }
+        }
+        ast::NullableFieldType {
+            field_type: ast::FieldType::Map(..),
+            nullable,
+        } => {
+            if *nullable {
+                "null".to_string()
+            } else {
+                format!("{{}}")
             }
         }
     }
