@@ -466,7 +466,7 @@ impl Schema {
         }
     }
 
-    /// Flattens all nested AST elementarations
+    /// Flattens all included AST elements
     pub fn flatten_elements<'a>(&'a self) -> Vec<&'a Element> {
         let mut elements = Vec::new();
 

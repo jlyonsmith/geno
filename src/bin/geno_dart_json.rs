@@ -6,21 +6,10 @@
 //!
 //! Uses `jsonEncode` and `jsonDecode` from `dart:convert` for JSON processing.
 use anyhow::Context;
-use clap::Parser;
 use geno::{ast, case};
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io::{self, Read};
-
-#[derive(Parser)]
-#[command(
-    name = "geno-dart-json",
-    about = "Geno Dart/JSON code generator",
-    long_about = "Generates Dart code with static encode/decode methods using dart:convert."
-)]
-struct Cli {
-    // No CLI arguments at the moment
-}
 
 fn main() {
     if let Err(err) = run() {
@@ -32,8 +21,6 @@ fn main() {
 }
 
 fn run() -> anyhow::Result<()> {
-    let _cli = Cli::parse();
-
     let stdin = io::stdin();
     let mut handle = stdin.lock();
     let mut buffer = Vec::new();
