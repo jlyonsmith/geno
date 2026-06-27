@@ -10,19 +10,29 @@ Define your data types once in a `.geno` file, then generate idiomatic code for 
 
 The name **geno** comes from the word **genome**, the set of genetic instructions containing all information needed for an organism to develop, function, and reproduce.
 
-> This project is still in development. In particular, the schema language is not yet stable. Please feel free to contribute!
+> This project is still in development, however the `format=1` schema language is stable at this point.
 
 ## Architecture
 
-Geno uses a multi-process pipeline. The main `geno` binary parses the schema and serializes the AST to MessagePack. It then pipes those bytes to a code generator binary (`geno-<format>`) via stdin, which writes generated source code to stdout.
+Geno uses a multi-process pipeline. The main `geno` binary parses the schema and serializes the AST to MessagePack. It then pipes those bytes to a code generator binary, `geno-<format>`, via `stdin` which writes then generated source code to `stdout`.  `geno` can optionally capture this output and write it to a file.
 
-```
-`.geno` file ──► geno (parser + validator) ──► AST (serialized with MessagePack) ──► `geno-<format>` ──► source code
+```mermaid
+flowchart LR
+    A([".geno"]) --> B["geno<br/>(parser + validator)"]
+    B --> C([".ast<br/>(MessagePack-serialized AST)"])
+    C --> D["geno-FORMAT<br/>(code generator)"]
+    D --> E(["generated code"])
+
+    classDef file fill:#e8f0fe,stroke:#4285f4,color:#000;
+    classDef program fill:#fce8e6,stroke:#ea4335,color:#000;
+    class A,C,E file;
+    class B,D program;
+    linkStyle default stroke:gray,stroke-width:2px;
 ```
 
 ## Schema Language
 
-The recommended extension for Geno files is `.geno`.  Geno schemas consist of a single `meta` section followed by any number of `enum` and `struct` declarations.  Schemas can be nested using the `include` statement.  For example, you could have a file called `common.geno`:
+The recommended extension for Geno files is `.geno`.  Geno schemas consist of any number of `enum` and `struct` declarations.  Schemas must start with a file level attribute block `!#[format = 1]` top level metadata.  Schemas can be nested or reused using the `include` statement.  For example, you could have a file called `common.geno`:
 
 ```geno
 #![format = 1]
@@ -63,8 +73,8 @@ Geno supports adding attributes to language elements.  The syntax is loosely mod
 
 There are two attribute levels in Geno metadata:
 
-- A file level attribute block starts with `#![` and ends with `]`
-- Language element level attributes start with `#[` and ends with `]`
+- A file level attribute starts with `#![` and ends with `]`.  You can have any number of attributes between `#![` and `]`, but only one file level attribute block per file.
+- Language element level attributes start with `#[` and end with `]`.  You can put this attribute block on structs, fields, enums, and enum variants.
 
 Attribute values come in three types:
 
@@ -80,22 +90,22 @@ Language elements are:
 - enum variants
 - structure fields
 
-A file level attribute block can only appear once in each `.geno` file. Element level attributes and can appear once before each specific language element. 
+A file level attribute block can only appear once in each `.geno` file. Element level attributes and can appear once before each specific language element.
 
 One file level atttribute value is required to define the schema format being used:
 
-| Key      | Values | Description |
-|----------|--------|-------------|
-| `format` | `1`    | This is the only supported format value at present |
+| Key | Values | Description |
+| -------- | ------ | ----------- |
+| `format` | `1` | The schema format |
 
 Use the `Attributes` member of the different elements in the AST to access values in code generators.
 
-> Right now there are no pre-defined attributes other than `format`. We may need to add a prefix system to avoid conflicts, or create a table of common ones. 
+> Right now there are no pre-defined attributes other than `format`. We may need to add a prefix system to avoid conflicts, or create a table of common ones.
 
 ### Types
 
 | Category | Types |
-|----------|-------|
+| -------- | ----- |
 | Integers | `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64` |
 | Floats | `f32`, `f64` |
 | Other | `string`, `bool` |
@@ -108,7 +118,7 @@ Use the `Attributes` member of the different elements in the AST to access value
 
 Enums have an optional integer base type (which defaults to `i32`). Variant values must be given explicitly and there cannot be variants with the same  value.
 
-```
+```geno
 enum color: u8 {
     red = 1,
     green = 2,
@@ -127,7 +137,7 @@ Single-line comments with `//` are supported.
 Geno comes with some built-in generators for several language/encoding formats and serve as examples of how to write your own generator:
 
 | Format | Binary | Description |
-|--------|--------|-------------|
+| ------ | ------ | ----------- |
 | `rust-serde` | `geno-rust-serde` | Rust structs/enums with `Serialize`/`Deserialize` derives |
 | `dart-mp` | `geno-dart-mp` | Dart classes/enums with MessagePack `toBytes`/`fromBytes` serialization |
 | `dart-json` | `geno-dart-json` | Dart classes/enums with `json_annotation` and `json_serializable` support |
@@ -164,7 +174,7 @@ The binary `geno-dart-json` generates code that:
 
 ### Command Line
 
-```
+```bash
 Geno is a schema compiler for generating source code from a schema definition.
 
 Usage: geno [OPTIONS] <INPUT_FILE> [EXTRA_ARGS]...
